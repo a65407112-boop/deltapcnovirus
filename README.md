@@ -1,5 +1,11 @@
 # Delta PC
 
+## Capture the original interface
+
+To export the actual loaded Delta menu, use [capture-delta.lua](capture-delta.lua) **inside Android Delta**. Follow the [capture instructions](docs/capture-original.md), then provide the resulting `.rbxm` for the Xeno adaptation. The original APK's [Poppins font descriptor](assets/fonts/Poppins.font.json) is preserved. Live Android export still needs verification.
+
+## Existing recreated menu
+
 A keyless, independent Roblox menu for Xeno. The blue layout is recreated from the NewUI reference bundled in the supplied Delta APK. It opens straight to the editor.
 
 This is a new frontend: Xeno supplies execution. It does not start Android Delta, port its native engine, or modify the APK's authentication. There is no key screen or activation request in this project. It is not an official Delta or Xeno release.
