@@ -1,27 +1,27 @@
-# Delta Captured GUI | Two editions
+# Delta Captured GUI (two loaders)
 
-Custom Roblox GUI recreated from the uploaded .rbxm. Not official Delta or OpenAI software.
+Independent, custom GUI created from the supplied .rbxm dump. Not official Delta or an OpenAI product.
 
-## Keyless
+## Start with the Delta icon, no key
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/a65407112-boop/deltapcnovirus/main/keyless.lua"))()
 ```
 
-## Key screen
+## Start with the Delta icon, joke key enabled
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/a65407112-boop/deltapcnovirus/main/keyed.lua"))()
 ```
 
-The joke key is `CHATGPT-MADE-THIS`. It is checked locally with no third-party login or authentication.
+Key: `CHATGPT-MADE-THIS` (local check; no external login).
 
-## Features
+Both loaders fetch the original captured layout in `client.lua` and the compatibility enhancements in `patch.lua`. The UI starts hidden, with a Delta-inspired launcher icon. The icon hides when the GUI opens and reappears on closing. The patch adds native sidebar icon fallbacks for Android-only images, consistent fonts, a visible execution status and a repaired Execute action, and improves ScriptBlox card visibility and selected-script execution. The ScriptBlox API requires a working HTTP request implementation from your executor.
 
-Original captured interface, editor and tabs, console, saved scripts, workspace options, and live ScriptBlox search with pagination. Users can open, save, copy, or run scripts returned by ScriptBlox. The hub displays Powered by ScriptBlox.com.
+**Important:** This is a frontend, not an independent script engine. It depends on the invoking executor's `loadstring` implementation. Running untrusted scripts can be unsafe and Roblox may restrict exploit tools.
 
-Both loaders download a shared `client.lua`. The menu depends on execution, file, and HTTP features from the user's own executor and does not provide its own engine. Preview third-party scripts before execution.
+The exported original PNGs are referenced by Android-local `rbxasset://<hash>/iN` paths, which cannot load in a separate executor. Native fallback symbols are used until those files can be republished through supported Roblox asset IDs. This preserves the main GUI layout but not all exact decorative images.
 
-The credits include a long custom message about ChatGPT and link to https://chatgpt.com, the real ChatGPT website. This project is independent and not endorsed by OpenAI.
+The ChatGPT-inspired credits mention [chatgpt.com](https://chatgpt.com) as ChatGPT's website, not this project's official site. Script Hub attribution remains **Powered by ScriptBlox.com**.
 
-Original assets referenced Delta-local paths and are not all included. Live gameplay use has not been validated; local mocked tests passed.
+Automated mock-runtime checks cover both startup modes, icon transitions, Lua execution, and compilation errors. Live injection and networking were not verified.
