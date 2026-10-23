@@ -2,7 +2,7 @@
 
 ## Capture the original interface
 
-To export the actual loaded Delta menu, use [capture-delta.lua](capture-delta.lua) **inside Android Delta**. Follow the [capture instructions](docs/capture-original.md), then provide the resulting `.rbxm` for the Xeno adaptation. The original APK's [Poppins font descriptor](assets/fonts/Poppins.font.json) is preserved. Live Android export still needs verification.
+To export the actual loaded Delta menu, use [capture-delta-gui.lua](capture-delta-gui.lua) **inside Android Delta**. Its status window shows the current stage and filename; green **Готово** appears only after the entire written file matches the model byte-for-byte on two read-back checks. Follow the [capture instructions](docs/capture-original.md), then provide the resulting `.rbxm` for the Xeno adaptation. The original APK's [Poppins font descriptor](assets/fonts/Poppins.font.json) is preserved. Live Android export with this status window still needs verification. The earlier [console-only helper](capture-delta.lua) is also available.
 
 ## Existing recreated menu
 

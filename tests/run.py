@@ -13,6 +13,7 @@ parser.add_argument("--luau", default="luau", help="Path to the official Luau CL
 args = parser.parse_args()
 generated = ROOT / "tests/.generated_runner.luau"
 capture_generated = ROOT / "tests/.generated_capture.luau"
+capture_gui_generated = ROOT / "tests/.generated_capture_gui.luau"
 try:
     content = bundle()
     actual = (ROOT / "delta.lua").read_text(encoding="utf-8")
@@ -23,8 +24,12 @@ try:
     capture_template = (ROOT / "tests/capture.spec.luau").read_text(encoding="utf-8")
     capture_source = (ROOT / "capture-delta.lua").read_text(encoding="utf-8")
     capture_generated.write_text(capture_template.replace("-- CAPTURE_PLACEHOLDER", capture_source), encoding="utf-8")
-    for test in ["tests/core.spec.luau", "tests/.generated_runner.luau", "tests/.generated_capture.luau"]:
+    gui_template = (ROOT / "tests/capture-gui.spec.luau").read_text(encoding="utf-8")
+    gui_source = (ROOT / "capture-delta-gui.lua").read_text(encoding="utf-8")
+    capture_gui_generated.write_text(gui_template.replace("-- CAPTURE_GUI_PLACEHOLDER", gui_source), encoding="utf-8")
+    for test in ["tests/core.spec.luau", "tests/.generated_runner.luau", "tests/.generated_capture.luau", "tests/.generated_capture_gui.luau"]:
         subprocess.run([args.luau, test], cwd=ROOT, check=True)
 finally:
     generated.unlink(missing_ok=True)
     capture_generated.unlink(missing_ok=True)
+    capture_gui_generated.unlink(missing_ok=True)
