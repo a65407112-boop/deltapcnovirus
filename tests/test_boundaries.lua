@@ -1,0 +1,31 @@
+dofile('tests/roblox_mock.lua')
+local ui=assert(loadfile('client.lua'))()({keyed=false})
+local input={UserInputType=Enum.UserInputType.Touch,Position=Vector2.new(200,200)}
+ui.launcher.InputBegan:Fire(input)
+input.Position=Vector2.new(9000,-9000)
+Mock.services.UserInputService.InputChanged:Fire(input)
+Mock.services.UserInputService.InputEnded:Fire(input)
+ui.launcher.Activated:Fire(input)
+assert(not ui.state.opened,'Touch drag must suppress activation')
+assert(ui.launcher.Position.X.Offset==1216 and ui.launcher.Position.Y.Offset==8,'Icon must stay on screen')
+workspace.CurrentCamera.ViewportSize=Vector2.new(800,600)
+assert(ui.launcher.Position.X.Offset<=736 and ui.launcher.Position.Y.Offset>=8)
+Mock.flush()
+assert(Mock.folders.DeltaPC and Mock.files['DeltaPC/state-v2.json'])
+
+ui.open();ui.nodes[38].Activated:Fire()
+ui.nodes[65].Text='old';ui.searchHub(1)
+ui.nodes[65].Text='new';ui.searchHub(1)
+Mock.http['https://scriptblox.com/api/script/search?mode=free&max=20&page=1&q=old']=Mock.json({result={totalPages=1,scripts={{title='OLD',script='error("old")'}}}})
+Mock.http['https://scriptblox.com/api/script/search?mode=free&max=20&page=1&q=new']=Mock.json({result={totalPages=1,scripts={{title='NEW',script='_G.newSelected=true'}}}})
+-- Reverse pending completions to ensure a stale response cannot replace newer cards.
+local reversed={};for i=#Mock.queue,1,-1 do reversed[#reversed+1]=Mock.queue[i] end;Mock.queue=reversed
+Mock.flush()
+local card=assert(ui.nodes[66]:FindFirstChild('Hub_1'))
+card.Activated:Fire();assert(ui.nodes[85].Text=='NEW')
+ui.nodes[89].Activated:Fire();Mock.flush();assert(_G.newSelected)
+
+ui.nodes[65].Text='failure';ui.searchHub(1);Mock.flush()
+assert(ui.status.Text:find('ScriptBlox:',1,true))
+ui.close();Mock.flush();assert(Mock.liveConnections()==0)
+print('Boundaries: touch, screen clamping, workspace directory, out-of-order requests, HTTP failure')

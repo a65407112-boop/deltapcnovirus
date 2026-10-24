@@ -1,0 +1,53 @@
+local file = io.open('src/core.lua')
+assert(file, 'State implementation is missing')
+file:close()
+local Core = dofile('src/core.lua')
+local s = Core.new(true)
+assert(s.locked and not s.opened)
+assert(s:open() == 'key' and not s.opened)
+assert(not s:unlock('wrong'))
+assert(s:unlock('  CHATGPT-MADE-THIS\n') and not s.locked)
+s:open(); assert(s.opened and s.page == 'Executor')
+s:hide(); assert(not s.opened)
+assert(Core.new(false):open() == 'main')
+
+local a = Core.new(false)
+local first = a.activeTab
+a:updateSource('print(1)')
+local second = a:addTab('second', 'print(2)')
+a:selectTab(first)
+assert(a:currentTab().source == 'print(1)')
+a:removeTab(second)
+assert(a.activeTab == first)
+a:removeTab(first)
+assert(#a.tabs == 1 and a:currentTab().source == '')
+
+assert(not a:saveScript('  ', 'x'))
+assert(not a:saveScript('test', '  '))
+local saved = assert(a:saveScript('  title  ', 'print(3)'))
+assert(saved.title == 'title' and #a.saved == 1)
+assert(#a:filterSaved('TiTL') == 1)
+assert(a:deleteScript(saved.id) and #a.saved == 0)
+
+-- Malformed disk input cannot inject an unlocked state or executable defaults.
+local b = Core.new(true, {locked=false, tabs={{id=3,title='ok',source='x'},{source=false}},
+ activeTab=999, saved={{id=1,title='one',source='a'},{id=1,title='two',source='b'},false},
+ settings={autoExecute=true, iconSize='invalid',console=true}, launcher={x=0/0,y=9}})
+assert(b.locked and b.activeTab == b.tabs[1].id and #b.tabs==1)
+assert(#b.saved==2 and b.saved[1].id~=b.saved[2].id)
+assert(b.settings.iconSize=='Medium' and b.settings.console)
+assert(b.launcher==nil)
+local snapshot = b:snapshot()
+assert(snapshot.locked==nil and snapshot.opened==nil)
+
+local x,y = Core.clampPosition(999,-50,55,800,600)
+assert(x==737 and y==8)
+x,y=Core.clampPosition(40,40,96,80,80)
+assert(x==0 and y==0)
+assert(not Core.wasDragged(3,3) and Core.wasDragged(7,0))
+local n=Core.new(false)
+for i=1,450 do n:log('Info',tostring(i),'runtime') end
+assert(#n.logs.runtime==400 and n.logs.runtime[1].text=='51')
+assert(n:setSetting('iconSize','Large'))
+assert(not n:setSetting('iconSize','Huge') and not n:setSetting('nativeScam',true))
+print('State: key gate, tabs, saved scripts, sanitization, drag, logs, settings')
