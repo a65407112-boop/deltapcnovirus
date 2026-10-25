@@ -1,4 +1,4 @@
-# Delta PC GUI
+# Delta GUI — PC and mobile
 
 Lua frontend built from the supplied Delta GUI hierarchy and the original textures/font in `Assets.zip`, with newly written button logic. It uses the executor running the loader to compile and execute Lua. This is an independent recreation, not native Delta or its license service.
 
@@ -18,24 +18,28 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/a65407112-boop/deltap
 
 Key: **`CHATGPT-MADE-THIS`**. This is a local demo gate, not server-side authentication or a Delta key bypass. Both versions start with a floating Delta icon.
 
-## PC controls
+## PC and mobile controls
 
 | Control | Action |
 | --- | --- |
-| Click the floating icon | Open the GUI or key panel |
-| Drag the icon with the mouse | Move it; releasing a drag does not open the GUI |
+| Click / tap the floating icon | Open the GUI or key panel |
+| Drag the icon with the mouse or one finger | Move it directly; other fingers cannot take over and releasing a drag does not open the GUI |
 | Right Shift | Open / hide when a text field is not focused |
 | Ctrl+Enter | Run the active editor tab |
 | Execute | Compile and run the active tab through the host executor's `loadstring` |
 | Clear | Clear the active tab only |
-| Execute Clipboard | Run clipboard text if the host provides clipboard reading; otherwise paste with Ctrl+V |
+| Execute Clipboard | Run clipboard text if supported; otherwise paste into the editor with Ctrl+V or the mobile paste menu |
 | + / tab / × | Add, switch and close tabs; at most 30 tabs |
 | Home → Upload | Save Lua source or load a raw HTTPS source URL into the local saved-script list |
-| Saved script actions | Original EXECUTE / DELETE buttons; click the title to edit; right-click the title to toggle AUTO |
+| Saved script actions | Original EXECUTE / DELETE buttons; click / tap the title to edit; right-click or hold it for 0.55 seconds to toggle AUTO |
 | Script Hub | Enter a search or click its search icon; scroll for more results; execute / open / save / copy the selected script |
 | Console | Search and clear Roblox logs and frontend execution messages separately |
 
-Touch dragging is supported too. The panels use the original viewport-relative layout. Script compile/runtime errors appear in a temporary notification and the console. Re-running a loader cleans up the previous frontend's listeners and UI.
+The launcher follows the supplied reference: dark fill, a thin colored outline, inset original logo, and 40 / 48 / 64 UI-pixel sizes. Icon Color changes the outline. Icon Shape changes the corner shape. Native display scaling determines the physical pixel size.
+
+Touch gestures retain one finger as their owner, preserve the grab offset in scaled/inset hosts, and keep the launcher clear of screen cutouts and the top bar. Rotation and focus loss cancel the active gesture without opening the UI. A completed drag stays a drag even if its activation event arrives late. Holding a saved title toggles AUTO; swiping the saved list cancels that hold. Clipboard fallbacks show touch instructions on touch devices.
+
+The panels use the original viewport-relative layout. The supplied wide interface is best used in landscape on phones. Script compile/runtime errors appear in a temporary notification and the console. Re-running a loader cleans up the previous frontend's listeners and UI.
 
 ## Executor workspace saving
 
@@ -49,7 +53,7 @@ DeltaPC/assets/<content-fingerprint>-f1.json
 
 This stores editor tabs and their source, the selected tab, saved scripts, settings, and icon position. Changes are saved after a short debounce, and state is flushed when the frontend closes or a teleport starts. Both loaders share the same saved workspace. Script text is stored inside the JSON file, not as separate `.lua` files.
 
-First launch requires `makefolder`, `writefile`, `readfile`, and `getcustomasset` (or `getsynasset`) to load the original graphics on PC. The 18 required files are cached; byte length and checksum are checked before registration. Missing asset APIs or damaged downloads produce a specific error instead of replacement icons. Already registered assets can be reused within the same session. It does not upload saved scripts to GitHub or ScriptBlox.
+First launch requires `makefolder`, `writefile`, `readfile`, and `getcustomasset` (or `getsynasset`) to load the original graphics on PC or mobile. The 18 required files are cached; byte length and checksum are checked before registration. Missing asset APIs or damaged downloads produce a specific error instead of replacement icons. Already registered assets can be reused within the same session. It does not upload saved scripts to GitHub or ScriptBlox.
 
 Auto Execute runs only your saved scripts marked **AUTO**, and only when the **Auto Execute** setting is enabled. It runs once after the interface is unlocked/opened in a session. It does not scan unrelated executor folders.
 
@@ -99,8 +103,8 @@ python tools/build.py
 python tests/run.py
 ```
 
-The test runner requires a system Lua 5.4 shared library. Nine test files cover asset integrity/caching, original styling/templates, enabled click targets, real source execution, key modes, loaders, tabs, clipboard handling, workspace round trips, mouse/touch drag, viewport clamping, selected ScriptBlox actions, stale results, API failure handling, settings, logs, cleanup and teleport queue code.
+The test runner requires a system Lua 5.4 shared library. Ten test files cover touch gestures and mobile fallbacks, asset integrity/caching, original styling/templates, enabled click targets, real source execution, key modes, loaders, tabs, clipboard handling, workspace round trips, mouse/touch drag, viewport clamping, selected ScriptBlox actions, stale results, API failure handling, settings, logs, cleanup and teleport queue code.
 
-**Test boundary:** these are Lua tests with a Roblox API double. Live Roblox rendering, injection, cross-universe teleport/reinjection and live service responses were not tested in this environment. Use a harmless script such as `print("Delta PC test")` for the first live check.
+**Test boundary:** these are Lua tests with a Roblox API double. Live Roblox rendering, on-device touch/keyboard behavior, injection, cross-universe teleport/reinjection and live service responses were not tested in this environment. Use a harmless script such as `print("Delta PC test")` for the first live check.
 
-Reference material: [Roblox fonts](https://create.roblox.com/docs/reference/engine/datatypes/Font), [custom asset registration](https://docs.sunc.io/Filesystem/getcustomasset/), [Roblox GUI input](https://create.roblox.com/docs/reference/engine/classes/GuiButton), [teleport lifecycle](https://create.roblox.com/docs/reference/engine/enums/TeleportState), [ScriptBlox search](https://docs.scriptblox.com/docs/scripts/search), [ScriptBlox API documentation](https://docs.scriptblox.com/), [RBXM format](https://dom.rojo.space/binary.html), and the supplied snapshot itself. Delta's [official site](https://deltaexploits.gg/) does not provide the original handlers contained in a running client.
+Reference material: [pointer lifecycles](https://create.roblox.com/docs/reference/engine/classes/InputObject), [GUI coordinate system](https://create.roblox.com/docs/reference/engine/classes/GuiBase2d/AbsolutePosition), [safe areas](https://create.roblox.com/docs/reference/engine/classes/GuiService/GetInsetArea), [Roblox fonts](https://create.roblox.com/docs/reference/engine/datatypes/Font), [custom asset registration](https://docs.sunc.io/Filesystem/getcustomasset/), [Roblox GUI input](https://create.roblox.com/docs/reference/engine/classes/GuiButton), [teleport lifecycle](https://create.roblox.com/docs/reference/engine/enums/TeleportState), [ScriptBlox search](https://docs.scriptblox.com/docs/scripts/search), [ScriptBlox API documentation](https://docs.scriptblox.com/), [RBXM format](https://dom.rojo.space/binary.html), and the supplied snapshot itself. Delta's [official site](https://deltaexploits.gg/) does not provide the original handlers contained in a running client.

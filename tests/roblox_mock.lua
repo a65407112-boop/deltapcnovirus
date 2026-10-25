@@ -1,5 +1,5 @@
 -- Engine boundary double. It does not simulate Roblox rendering or native execution.
-Mock={signals={},queue={},services={},files={},folders={},http={},focused=nil,keys={}}
+Mock={signals={},queue={},services={},files={},folders={},http={},focused=nil,keys={},geometry={}}
 local function signal(canFire)
     local s={listeners={}}
     function s:Connect(fn)
@@ -33,8 +33,8 @@ Color3.fromRGB=function(r,g,b) return Color3.new(r/255,g/255,b/255) end
 Rect={new=function(x,y,w,h) return {Min=Vector2.new(x,y),Max=Vector2.new(w,h)} end}
 Font={new=function(family,weight,style) return {Family=family,Weight=weight,Style=style} end}
 local categories={}
-for name in ('AutomaticSize ZIndexBehavior FontWeight FontStyle Font TextXAlignment TextYAlignment TextTruncate TextDirection BorderMode SizeConstraint ScaleType ResamplerMode FillDirection HorizontalAlignment VerticalAlignment SortOrder AspectType DominantAxis ApplyStrokeMode LineJoinMode ElasticBehavior ScrollBarInset VerticalScrollBarPosition ScrollingDirection ScreenInsets SafeAreaCompatibility UIFlexAlignment ItemLineAlignment StartCorner UserInputType KeyCode MessageType TeleportState'):gmatch('%S+') do categories[name]=true end
-local maps={AutomaticSize={None=0,X=1,Y=2,XY=3},UserInputType={MouseButton1=0,Touch=7,MouseMovement=4},
+for name in ('AutomaticSize ZIndexBehavior FontWeight FontStyle Font TextXAlignment TextYAlignment TextTruncate TextDirection BorderMode SizeConstraint ScaleType ResamplerMode FillDirection HorizontalAlignment VerticalAlignment SortOrder AspectType DominantAxis ApplyStrokeMode LineJoinMode ElasticBehavior ScrollBarInset VerticalScrollBarPosition ScrollingDirection ScreenInsets SafeAreaCompatibility UIFlexAlignment ItemLineAlignment StartCorner UserInputType UserInputState KeyCode MessageType TeleportState'):gmatch('%S+') do categories[name]=true end
+local maps={AutomaticSize={None=0,X=1,Y=2,XY=3},ScreenInsets={None=0,DeviceSafeInsets=1,CoreUISafeInsets=2},UserInputType={MouseButton1=0,Touch=7,MouseMovement=4},
     KeyCode={RightShift=303,LeftControl=306,RightControl=305,Return=13,Escape=27},
     MessageType={MessageOutput=0,MessageInfo=1,MessageWarning=2,MessageError=3}}
 Enum=setmetatable({},{__index=function(t,name)
@@ -101,13 +101,14 @@ function methods:Clone()
     return copy
 end
 local function absoluteSize(n)
-    if n.ClassName=='ScreenGui' then return Vector2.new(1280,720) end
+    if n.ClassName=='ScreenGui' then return workspace and workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720) end
     local p=n.Parent and n.Parent.AbsoluteSize or Vector2.new(1280,720)
     local size=n._props.Size or UDim2.new()
     return Vector2.new(size.X.Scale*p.X+size.X.Offset,size.Y.Scale*p.Y+size.Y.Offset)
 end
 local mt={__index=function(n,k)
     if methods[k] then return methods[k] end
+    if Mock.geometry[n] and Mock.geometry[n][k] then return Mock.geometry[n][k] end
     if k=='AbsoluteSize' then return absoluteSize(n) end
     if k=='AbsolutePosition' then
         local p=n.Parent;local pos=n._props.Position or UDim2.new();local anchor=n._props.AnchorPoint or Vector2.new()
@@ -161,11 +162,17 @@ player.OnTeleport=signal()
 Instance.new('PlayerGui',player)
 player.GetNetworkPing=function() return .03 end
 Mock.services.Players={LocalPlayer=player,GetPlayers=function() return {player} end}
-Mock.services.UserInputService={InputBegan=signal(),InputChanged=signal(),InputEnded=signal(),
+Mock.services.UserInputService={InputBegan=signal(),InputChanged=signal(),InputEnded=signal(),WindowFocusReleased=signal(),TouchEnabled=false,
     GetFocusedTextBox=function() return Mock.focused end,IsKeyDown=function(_,key) return Mock.keys[key]==true end}
 Mock.services.RunService={RenderStepped=signal()}
 Mock.services.LogService={MessageOut=signal()}
 Mock.services.CoreGui=Instance.new('ScreenGui')
+Mock.services.GuiService=Instance.new('GuiService')
+Mock.services.GuiService.GetInsetArea=function(_,kind)
+    local v=workspace.CurrentCamera.ViewportSize
+    if kind==Enum.ScreenInsets.None then return Mock.noneInset or Rect.new(0,0,v.X,v.Y) end
+    return Mock.coreInset or Rect.new(0,0,v.X,v.Y)
+end
 Mock.services.TextService={GetTextSize=function(_,s,size) return Vector2.new(#s*size/2,size) end}
 Mock.services.TeleportService={Teleport=function(_,...) Mock.teleport={...} end,TeleportToPlaceInstance=function(_,...) Mock.teleport={...} end}
 Mock.services.VirtualUser={CaptureController=function() end,ClickButton2=function() Mock.idleClicks=(Mock.idleClicks or 0)+1 end}

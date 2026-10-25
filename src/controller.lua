@@ -24,7 +24,7 @@ return function(config)
     local previous=shared.__DeltaPC
     if type(previous)=='table' and type(previous.close)=='function' then pcall(previous.close) end
     local Services={}
-    for _,name in ipairs({'Players','UserInputService','RunService','HttpService','LogService','TeleportService','TextService'}) do
+    for _,name in ipairs({'Players','UserInputService','RunService','HttpService','LogService','TeleportService','TextService','GuiService'}) do
         Services[name]=game:GetService(name)
     end
     local Players,Input,Run,Http=Services.Players,Services.UserInputService,Services.RunService,Services.HttpService
@@ -186,10 +186,16 @@ return function(config)
         return true
     end
     ui.execute=execute
-    local launcher=make('ImageButton',gui,{Name='DeltaLauncher',Size=UDim2.fromOffset(56,56),
-        Position=UDim2.new(1,-78,.45,0),BackgroundColor3=colors.accent,BorderSizePixel=0,
-        Image=asset('logo.png'),ScaleType=Enum.ScaleType.Fit,ZIndex=50})
-    round(launcher,15);ui.launcher=launcher
+    local launcher=make('ImageButton',gui,{Name='DeltaLauncher',Size=UDim2.fromOffset(48,48),
+        Position=UDim2.new(1,-78,.45,0),BackgroundColor3=Color3.fromRGB(47,50,60),BorderSizePixel=0,
+        Image='',ZIndex=50})
+    local launcherCorner=round(launcher,0);launcherCorner.CornerRadius=UDim.new(.2,0)
+    local launcherOutline=make('UIStroke',launcher,{Color=Color3.fromRGB(61,155,235),Thickness=2,
+        ApplyStrokeMode=Enum.ApplyStrokeMode.Border,LineJoinMode=Enum.LineJoinMode.Round})
+    make('ImageLabel',launcher,{Name='Logo',BackgroundTransparency=1,AnchorPoint=Vector2.new(.5,.5),
+        Position=UDim2.fromScale(.5,.5),Size=UDim2.fromScale(.94,.94),Image=asset('logo.png'),
+        ImageColor3=Color3.fromRGB(236,236,236),ScaleType=Enum.ScaleType.Fit,ZIndex=51})
+    ui.launcher=launcher
     local keyPanel=nodes[1];keyPanel.Name='KeyPanel';keyPanel.Parent=gui
     -- The capture records the closed position (x=1.3). The open panel is right-aligned.
     keyPanel.Position=UDim2.fromScale(1,.5);keyPanel.Visible=false;keyPanel.ZIndex=40
@@ -237,7 +243,8 @@ return function(config)
             BorderSizePixel=0,ZIndex=90});round(p,10)
         copyPopup=p
         local v=viewport();make('UIScale',p,{Scale=math.min(1,(v.X-24)/520,(v.Y-24)/320)})
-        label(p,'Select text and press Ctrl+C',{Position=UDim2.fromOffset(20,12),Size=UDim2.new(1,-80,0,28)})
+        label(p,Input.TouchEnabled and 'Touch and hold the text to copy' or 'Select text and press Ctrl+C',
+            {Position=UDim2.fromOffset(20,12),Size=UDim2.new(1,-80,0,28)})
         local box=make('TextBox',p,{Name='Text',Position=UDim2.fromOffset(20,52),Size=UDim2.new(1,-40,1,-72),
             Text=text,ClearTextOnFocus=false,MultiLine=true,TextSize=14,Font=Enum.Font.Code,
             TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
@@ -284,50 +291,96 @@ return function(config)
     connect(nodes[11].FocusLost,function(enter) if enter then submitKey() end end)
     bind(nodes[24],function() copy('https://discord.gg/deltax') end)
     bind(nodes[26],function() copy('https://discord.gg/deltax') end)
-    -- Launcher dragging has one global listener pair, and retains suppression through release.
-    local drag,suppressClick
-    local function launcherSize() return ({Small=44,Medium=56,Large=72})[state.settings.iconSize] end
+    -- One pointer owns a gesture until it ends; keep its result for delayed Activated events.
+    local gesture,savedTouch,consumedSavedTouch
+    local function launcherSize() return ({Small=40,Medium=48,Large=64})[state.settings.iconSize] end
+    local function launcherSpace()
+        local v=viewport();local drawn=launcher.AbsoluteSize;local requested=launcher.Size
+        local sx=drawn.X/math.max(1,requested.X.Offset)
+        local sy=drawn.Y/math.max(1,requested.Y.Offset)
+        if sx<=0 then sx=1 end;if sy<=0 then sy=1 end
+        local rootSize=gui.AbsoluteSize;local rootPosition=gui.AbsolutePosition
+        local w=(rootSize.X>0 and rootSize.X or v.X)/sx
+        local h=(rootSize.Y>0 and rootSize.Y or v.Y)/sy
+        local left,top,right,bottom=0,0,w,h
+        local ok,safe=pcall(function()
+            return Services.GuiService:GetInsetArea(Enum.ScreenInsets.CoreUISafeInsets)
+        end)
+        if ok and safe then
+            -- AbsolutePosition and GetInsetArea both use the core-safe coordinate system.
+            left=math.max(0,(safe.Min.X-rootPosition.X)/sx)
+            top=math.max(0,(safe.Min.Y-rootPosition.Y)/sy)
+            right=math.min(w,(safe.Max.X-rootPosition.X)/sx)
+            bottom=math.min(h,(safe.Max.Y-rootPosition.Y)/sy)
+            if right<=left or bottom<=top then left,top,right,bottom=0,0,w,h end
+        end
+        return w,h,sx,sy,left,top,right,bottom
+    end
     local function placeLauncher(x,y)
-        local v=viewport();local size=launcherSize()
-        x,y=Core.clampPosition(x,y,size,v.X,v.Y)
+        local w,h,_,_,left,top,right,bottom=launcherSpace();local size=launcherSize()
+        x,y=Core.clampPosition(x-left,y-top,size,right-left,bottom-top)
+        x,y=x+left,y+top
         launcher.Position=UDim2.fromOffset(x,y)
-        state.launcher={x=x/math.max(1,v.X-size),y=y/math.max(1,v.Y-size)}
+        state.launcher={x=x/math.max(1,w-size),y=y/math.max(1,h-size)}
+    end
+    local function cancelGestures()
+        if gesture then gesture.cancelled=true;gesture.ended=true end
+        if savedTouch then savedTouch.cancelled=true;savedTouch.ended=true end
     end
     local function resize()
-        local v=viewport()
+        cancelGestures()
         local size=launcherSize();launcher.Size=UDim2.fromOffset(size,size)
-        local pos=state.launcher or {x=.94,y=.45}
-        placeLauncher(pos.x*(v.X-size),pos.y*(v.Y-size))
-        toast.Size=UDim2.fromOffset(math.min(600,math.max(200,v.X-24)),48)
+        local w,h=launcherSpace();local pos=state.launcher or {x=.94,y=.45}
+        placeLauncher(pos.x*math.max(1,w-size),pos.y*math.max(1,h-size))
+        local v=viewport();toast.Size=UDim2.fromOffset(math.min(600,math.max(200,v.X-24)),48)
     end
     connect(launcher.InputBegan,function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            suppressClick=false
-            drag={input=input,start=input.Position,x=launcher.AbsolutePosition.X,y=launcher.AbsolutePosition.Y,moved=false}
-        end
+        if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+        if gesture and not gesture.ended then return end
+        local _,_,sx,sy=launcherSpace()
+        gesture={input=input,start=Vector2.new(input.Position.X,input.Position.Y),
+            x=launcher.Position.X.Offset,y=launcher.Position.Y.Offset,sx=sx,sy=sy,moved=false}
     end)
-    bind(launcher,function()
-        if suppressClick or (drag and drag.moved) then return end
+    bind(launcher,function(input)
+        if gesture then
+            if input and input~=gesture.input then return end
+            if gesture.moved or gesture.cancelled or gesture.activated then return end
+            gesture.activated=true
+        end
         open()
     end)
-    local function sameMovement(info,input)
-        return input==info.input or (info.input.UserInputType==Enum.UserInputType.MouseButton1
-            and input.UserInputType==Enum.UserInputType.MouseMovement)
+    launcher.AutoButtonColor=false
+    local function moveGesture(input)
+        if not gesture or gesture.ended then return end
+        if input~=gesture.input and not (gesture.input.UserInputType==Enum.UserInputType.MouseButton1
+            and input.UserInputType==Enum.UserInputType.MouseMovement) then return end
+        local dx,dy=input.Position.X-gesture.start.X,input.Position.Y-gesture.start.Y
+        gesture.moved=gesture.moved or Core.wasDragged(dx,dy)
+        -- Follow even tiny movements immediately. The threshold controls activation, not motion.
+        placeLauncher(gesture.x+dx/gesture.sx,gesture.y+dy/gesture.sy)
     end
     connect(Input.InputChanged,function(input)
-        if drag and sameMovement(drag,input) then
-            local dx,dy=input.Position.X-drag.start.X,input.Position.Y-drag.start.Y
-            drag.moved=drag.moved or Core.wasDragged(dx,dy)
-            if drag.moved then suppressClick=true;placeLauncher(drag.x+dx,drag.y+dy) end
+        moveGesture(input)
+        if savedTouch and not savedTouch.ended and input==savedTouch.input then
+            local dx,dy=input.Position.X-savedTouch.start.X,input.Position.Y-savedTouch.start.Y
+            savedTouch.moved=savedTouch.moved or Core.wasDragged(dx,dy)
         end
     end)
     connect(Input.InputEnded,function(input)
-        if drag and (input==drag.input or (input.UserInputType==Enum.UserInputType.MouseButton1
-            and drag.input.UserInputType==Enum.UserInputType.MouseButton1)) then
-            suppressClick=drag.moved;drag=nil;persist()
-            later(.1,function() if not drag then suppressClick=false end end)
+        if gesture and input==gesture.input then
+            if input.UserInputState==Enum.UserInputState.End then moveGesture(input) end
+            if input.UserInputState==Enum.UserInputState.Cancel then gesture.cancelled=true end
+            gesture.ended=true;persist()
+        end
+        if savedTouch and input==savedTouch.input then
+            if input.UserInputState==Enum.UserInputState.Cancel then savedTouch.cancelled=true end
+            savedTouch.ended=true
         end
     end)
+    connect(Input.WindowFocusReleased,function() cancelGestures();persist() end)
+    connect(gui:GetPropertyChangedSignal('AbsoluteSize'),resize)
+    connect(gui:GetPropertyChangedSignal('AbsolutePosition'),resize)
+    pcall(function() connect(Services.GuiService:GetPropertyChangedSignal('TopbarInset'),resize) end)
     local cameraConnection
     local function watchCamera()
         if cameraConnection then cameraConnection:Disconnect() end
@@ -399,7 +452,8 @@ return function(config)
     bind(nodes[405],function()
         local read=api('getclipboard') or api('readclipboard')
         if type(read)~='function' then
-            report('Clipboard reading is unavailable. Paste with Ctrl+V, then Execute.','Error');editor:CaptureFocus();return
+            report(Input.TouchEnabled and 'Clipboard reading is unavailable. Touch and hold the editor to paste, then tap Execute.'
+                or 'Clipboard reading is unavailable. Paste with Ctrl+V, then Execute.','Error');editor:CaptureFocus();return
         end
         local ok,text=pcall(read)
         if not ok or type(text)~='string' then report('Could not read clipboard.','Error');return end
@@ -435,15 +489,35 @@ return function(config)
             row.Size=UDim2.new(.9979484,0,0,rowHeight);parts[558].Text=item.title
             parts[560].Name='Run';parts[563].Name='Delete'
             parts[566].Visible=item.autoExecute==true;parts[568].Text='AUTO'
-            -- The original row has Execute/Delete only. Title click edits; right-click marks AUTO.
+            -- Keep the original row: tap the title to edit; hold it (or right-click) to toggle AUTO.
             local title=parts[558]
             local edit=make('TextButton',row,{Name='Edit',Text='',BackgroundTransparency=1,
                 Position=title.Position,Size=title.Size,AnchorPoint=title.AnchorPoint,ZIndex=title.ZIndex+1})
             table.insert(savedConnections,bind(parts[560],function() execute(item.source,item.title) end))
             table.insert(savedConnections,bind(parts[563],function() state:deleteScript(item.id);renderSaved();persist() end))
-            table.insert(savedConnections,bind(edit,function() if newTab(item.title,item.source) then navigate('Executor') end end))
-            table.insert(savedConnections,connect(edit.MouseButton2Click,function()
+            local function toggleAuto()
                 item.autoExecute=not item.autoExecute;renderSaved();persist()
+                report(item.autoExecute and 'Auto Execute enabled for '..item.title or 'Auto Execute disabled for '..item.title)
+            end
+            table.insert(savedConnections,bind(edit,function(input)
+                if input and input.UserInputType==Enum.UserInputType.Touch then
+                    if input==consumedSavedTouch then return end
+                    if savedTouch and (input~=savedTouch.input or savedTouch.moved or savedTouch.cancelled) then return end
+                end
+                if newTab(item.title,item.source) then navigate('Executor') end
+            end))
+            table.insert(savedConnections,connect(edit.MouseButton2Click,toggleAuto))
+            table.insert(savedConnections,connect(edit.InputBegan,function(input)
+                if input.UserInputType~=Enum.UserInputType.Touch then return end
+                if savedTouch and not savedTouch.ended then return end
+                consumedSavedTouch=nil
+                local press={input=input,start=Vector2.new(input.Position.X,input.Position.Y)}
+                savedTouch=press
+                later(.55,function()
+                    if savedTouch~=press or press.ended or press.moved or press.cancelled or not edit.Parent
+                        or not state.opened or state.page~='Home' or activePopup then return end
+                    consumedSavedTouch=input;toggleAuto()
+                end)
             end))
         end
     end
@@ -639,10 +713,10 @@ return function(config)
         local originalEditor={background=nodes[369].BackgroundColor3,color=editor.TextColor3,placeholder=editor.PlaceholderColor3,
             image=nodes[368].ImageTransparency,overlay=nodes[369].ImageTransparency,alpha=nodes[369].BackgroundTransparency}
         local function iconAppearance()
-            local palette={Blue=Color3.fromRGB(34,160,255),Green=Color3.fromRGB(46,184,135),Purple=Color3.fromRGB(153,100,241)}
-            launcher.BackgroundColor3=palette[state.settings.iconColor]
-            local corner=round(launcher,state.settings.iconShape=='Square' and 0 or state.settings.iconShape=='Circle' and 100 or 15)
-            if state.settings.iconShape=='Circle' then corner.CornerRadius=UDim.new(.5,0) end
+            local palette={Blue=Color3.fromRGB(61,155,235),Green=Color3.fromRGB(46,184,135),Purple=Color3.fromRGB(153,100,241)}
+            launcherOutline.Color=palette[state.settings.iconColor]
+            launcherCorner.CornerRadius=UDim.new(state.settings.iconShape=='Circle' and .5
+                or state.settings.iconShape=='Square' and 0 or .2,0)
             resize()
         end
         local function applyTheme()

@@ -53,7 +53,7 @@ assert(ui.nodes[139].Value==false and ui.status.Text:find('requires native Delta
 ui.nodes[178].Activated:Fire();assert(ui.state.settings.autoExecute)
 ui.nodes[250].Activated:Fire()
 assert(ui.nodes[254].Visible,'Open the captured icon-size dropdown')
-ui.nodes[256].Activated:Fire();assert(ui.state.settings.iconSize=='Small' and ui.launcher.Size.X.Offset==44)
+ui.nodes[256].Activated:Fire();assert(ui.state.settings.iconSize=='Small' and ui.launcher.Size.X.Offset==40)
 
 ui.nodes[50].Activated:Fire()
 Mock.services.LogService.MessageOut:Fire('A specific warning',Enum.MessageType.MessageWarning);Mock.flush()
