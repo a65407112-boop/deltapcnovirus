@@ -1,7 +1,7 @@
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 pieces=['-- Delta PC frontend: generated bundle. Edit src/ and run python tools/build.py.\n']
-for name in ('core','skin'):
+for name in ('core','assets','skin'):
     pieces.append('local '+name.capitalize()+' = (function()\n'+(ROOT/'src'/f'{name}.lua').read_text()+'\nend)()\n')
 pieces.append((ROOT/'src/controller.lua').read_text())
 (ROOT/'client.lua').write_text('\n'.join(pieces))

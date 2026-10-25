@@ -52,10 +52,8 @@ ui.nodes[42].Activated:Fire();ui.nodes[134].Activated:Fire()
 assert(ui.nodes[139].Value==false and ui.status.Text:find('requires native Delta',1,true))
 ui.nodes[178].Activated:Fire();assert(ui.state.settings.autoExecute)
 ui.nodes[250].Activated:Fire()
-local dropdown=assert(ui.gui:FindFirstChild('Dropdown'))
-local small
-for _,b in ipairs(dropdown:GetChildren()) do if b:IsA('TextButton') and b.Text=='Small' then small=b end end
-assert(small);small.Activated:Fire();assert(ui.state.settings.iconSize=='Small' and ui.launcher.Size.X.Offset==44)
+assert(ui.nodes[254].Visible,'Open the captured icon-size dropdown')
+ui.nodes[256].Activated:Fire();assert(ui.state.settings.iconSize=='Small' and ui.launcher.Size.X.Offset==44)
 
 ui.nodes[50].Activated:Fire()
 Mock.services.LogService.MessageOut:Fire('A specific warning',Enum.MessageType.MessageWarning);Mock.flush()

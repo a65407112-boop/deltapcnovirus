@@ -1,9 +1,26 @@
--- Fresh controller. Core and Skin are prepended by tools/build.py.
+-- Behavior for the supplied Delta GUI. Core, Assets and Skin are bundled by tools/build.py.
 return function(config)
     config=type(config)=='table' and config or {}
     local env=(type(getfenv)=='function' and getfenv()) or _G
     local shared=(type(getgenv)=='function' and getgenv()) or _G
     local function api(name) return env[name] or shared[name] end
+    local function httpGet(url)
+        local requestFn=api('request') or api('http_request')
+        local synApi=api('syn');local httpApi=api('http')
+        if type(requestFn)~='function' and type(synApi)=='table' then requestFn=synApi.request end
+        if type(requestFn)~='function' and type(httpApi)=='table' then requestFn=httpApi.request end
+        if type(requestFn)=='function' then
+            local response=requestFn({Url=url,Method='GET',Headers={Accept='*/*'},Timeout=20})
+            assert(type(response)=='table','HTTP response is not a table')
+            local code=tonumber(response.StatusCode or response.Status)
+            assert(not code or (code>=200 and code<300),'HTTP '..tostring(code))
+            assert(response.Success~=false and type(response.Body)=='string','Empty HTTP response')
+            return response.Body
+        end
+        local body=game:HttpGet(url)
+        assert(type(body)=='string' and #body>0,'Empty HTTP response');return body
+    end
+    local asset=Assets(api,httpGet,shared)
     local previous=shared.__DeltaPC
     if type(previous)=='table' and type(previous.close)=='function' then pcall(previous.close) end
     local Services={}
@@ -21,7 +38,7 @@ return function(config)
         if ok and type(data)=='table' then stored=data end
     end
     local state=Core.new(config.keyed,stored,options.Key)
-    local nodes,propertyFailures=Skin()
+    local nodes,propertyFailures=Skin(asset)
     local gui=nodes[0]
     gui.Name='DeltaPC';gui.ResetOnSpawn=false;gui.DisplayOrder=1000
     gui.IgnoreGuiInset=true;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
@@ -85,71 +102,36 @@ return function(config)
     local function bind(object,callback)
         object.Active=true;object.AutoButtonColor=true
         pcall(function() object.Interactable=true end)
-        connect(object.Activated,callback)
-    end
-    local function removeChildren(object)
-        for _,child in ipairs(object:GetChildren()) do child:Destroy() end
+        return connect(object.Activated,callback)
     end
     local function viewport()
         local camera=workspace.CurrentCamera
         return camera and camera.ViewportSize or Vector2.new(1280,720)
     end
-    local window=make('Frame',gui,{Name='Window',AnchorPoint=Vector2.new(.5,.5),
-        Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(1080,660),BackgroundColor3=colors.bg,
-        BorderSizePixel=0,Visible=false,ZIndex=10})
-    round(window,14)
-    local scale=make('UIScale',window,{Scale=1})
-    local header=make('Frame',window,{Name='Header',Size=UDim2.new(1,-72,0,40),
-        BackgroundTransparency=1,Active=true,ZIndex=12})
-    label(header,'DELTA',{Position=UDim2.fromOffset(20,0),Size=UDim2.fromOffset(110,40),
-        Font=Enum.Font.GothamBold,TextSize=15})
-    label(header,'PC  /  '..(config.keyed and 'KEYED' or 'KEYLESS'),{
-        Position=UDim2.fromOffset(113,1),Size=UDim2.fromOffset(200,40),TextColor3=colors.muted,TextSize=11})
-    label(header,'Right Shift to hide  ·  Ctrl+Enter to run',{
-        Position=UDim2.new(1,-320,0,0),Size=UDim2.fromOffset(300,40),TextXAlignment=Enum.TextXAlignment.Right,
-        TextColor3=colors.muted,TextSize=11})
+    -- A transparent visibility group leaves the source geometry in viewport coordinates.
+    local window=make('Frame',gui,{Name='CapturedUI',Size=UDim2.fromScale(1,1),
+        BackgroundTransparency=1,BorderSizePixel=0,Visible=false,ZIndex=10})
     local pages={Home=545,Executor=367,Scripthub=60,Settings=109,Console=645}
-    for _,id in pairs(pages) do
-        local p=nodes[id];p.Parent=window;p.AnchorPoint=Vector2.new(0,0)
-        p.Position=UDim2.fromOffset(18,50);p.Size=UDim2.new(1,-108,1,-80)
-        p.BackgroundTransparency=1;p.Visible=false;p.ZIndex=2
+    for _,id in pairs(pages) do nodes[id].Parent=window;nodes[id].Visible=false end
+    nodes[32].Parent=window;nodes[32].Visible=true
+    nodes[366].Parent=window
+    -- Dynamic entries are clones of the source templates, not separately designed controls.
+    for id,node in pairs(nodes) do node:SetAttribute('DeltaNode',id) end
+    local templateIds={68,426,667,421,556}
+    for _,id in ipairs(templateIds) do nodes[id].Parent=nil end
+    for _,id in ipairs({569,582,595,608,657,690}) do nodes[id]:Destroy() end
+    local function cloneTemplate(id,parent)
+        local object=nodes[id]:Clone();local parts={[id]=object}
+        for _,child in ipairs(object:GetDescendants()) do
+            local sourceId=child:GetAttribute('DeltaNode')
+            if sourceId then parts[sourceId]=child end
+        end
+        object.Visible=true;object.Parent=parent
+        return object,parts
     end
-    nodes[366]:Destroy()
-    nodes[32].Parent=window;nodes[32].AnchorPoint=Vector2.new(1,0)
-    nodes[32].Position=UDim2.new(1,0,0,0);nodes[32].Size=UDim2.new(0,72,1,0)
-    nodes[32].Visible=true;nodes[32].ZIndex=15
-    for _,child in ipairs(nodes[32]:GetChildren()) do if child:IsA('UIListLayout') then child:Destroy() end end
-    -- Exported reserve folders are inert templates; never leave template controls on screen.
-    nodes[68]:Destroy();nodes[426]:Destroy();nodes[667]:Destroy()
-    for _,id in ipairs({556,569,582,595,608}) do nodes[id]:Destroy() end
-    nodes[657]:Destroy();nodes[690]:Destroy();nodes[410]:Destroy();nodes[515]:Destroy()
-    local function glyph(parent,text)
-        for _,child in ipairs(parent:GetChildren()) do if child.Name=='FallbackGlyph' then child:Destroy() end end
-        return label(parent,text,{Name='FallbackGlyph',Font=Enum.Font.Code,TextSize=21,
-            TextXAlignment=Enum.TextXAlignment.Center,TextColor3=colors.muted,
-            Size=UDim2.fromScale(1,1),ZIndex=8})
-    end
-    local nav={{34,'Home','⌂'},{46,'Executor','</>'},{38,'Scripthub','▦'},
-        {42,'Settings','⚙'},{50,'Console','>_'},{54,'Close','×'}}
-    for index,item in ipairs(nav) do
-        local b=nodes[item[1]];b.AnchorPoint=Vector2.new(0,0)
-        b.Position=UDim2.fromOffset(10,55+(index-1)*72);b.Size=UDim2.fromOffset(52,52)
-        b.LayoutOrder=index;b.ZIndex=16;round(b,10)
-        for _,child in ipairs(b:GetChildren()) do if child:IsA('ImageLabel') then child.Visible=false end end
-        glyph(b,item[3])
-        label(b,item[2],{Name='Caption',Position=UDim2.new(-.12,0,1,3),Size=UDim2.new(1.24,0,0,14),
-            TextSize=9,TextColor3=colors.muted,TextXAlignment=Enum.TextXAlignment.Center})
-    end
-    for _,id in ipairs({63,112,548}) do glyph(nodes[id],'⌕') end
-    for _,id in ipairs({29,106,628,424}) do glyph(nodes[id],'×') end
-    glyph(nodes[418],'+');glyph(nodes[372],'≡')
-    -- Native colored backgrounds replace the unavailable Android textures.
-    for _,id in ipairs({368,369,517,518,529}) do
-        nodes[id].Image='';nodes[id].BackgroundColor3=(id==369) and colors.field or colors.panel
-        nodes[id].BackgroundTransparency=(id==517) and 1 or 0;round(nodes[id],10)
-    end
-    local status=label(window,'Ready',{Name='Status',Position=UDim2.new(0,20,1,-24),
-        Size=UDim2.new(1,-110,0,18),TextSize=11,TextColor3=colors.muted,TextTruncate=Enum.TextTruncate.AtEnd})
+    local nav={{34,'Home'},{46,'Executor'},{38,'Scripthub'},
+        {42,'Settings'},{50,'Console'},{54,'Close'}}
+    local status={Text='Ready'} -- Internal feedback; the original GUI has no extra status bar.
     ui.status=status
     local renderLogs=function() end
     local toast=label(gui,'',{Name='Toast',AnchorPoint=Vector2.new(.5,1),Position=UDim2.new(.5,0,1,-20),
@@ -184,22 +166,6 @@ return function(config)
         savedToken=savedToken+1;local token=savedToken
         later(.6,function() if token==savedToken then persistNow() end end)
     end
-    local function httpGet(url)
-        local requestFn=api('request') or api('http_request')
-        local synApi=api('syn');local httpApi=api('http')
-        if type(requestFn)~='function' and type(synApi)=='table' then requestFn=synApi.request end
-        if type(requestFn)~='function' and type(httpApi)=='table' then requestFn=httpApi.request end
-        if type(requestFn)=='function' then
-            local response=requestFn({Url=url,Method='GET',Headers={Accept='application/json'},Timeout=20})
-            assert(type(response)=='table','HTTP response is not a table')
-            local code=tonumber(response.StatusCode or response.Status)
-            assert(not code or (code>=200 and code<300),'HTTP '..tostring(code))
-            assert(response.Success~=false and type(response.Body)=='string','Empty HTTP response')
-            return response.Body
-        end
-        local body=game:HttpGet(url)
-        assert(type(body)=='string' and #body>0,'Empty HTTP response');return body
-    end
     local function execute(source,title)
         if ui.destroyed or state.locked then return false end
         if type(source)~='string' or source:match('^%s*$') then report('The script is empty.','Error');return false end
@@ -220,51 +186,42 @@ return function(config)
         return true
     end
     ui.execute=execute
-    local launcher=button(gui,'',{Name='DeltaLauncher',Size=UDim2.fromOffset(56,56),
-        Position=UDim2.new(1,-78,.45,0),BackgroundColor3=colors.accent,ZIndex=50})
-    ui.launcher=launcher
-    -- Draw the Delta mark using Roblox UI primitives; no remote asset required.
-    local mark=make('Frame',launcher,{Name='DeltaMark',BackgroundTransparency=1,
-        Position=UDim2.fromScale(.18,.15),Size=UDim2.fromScale(.64,.64),ZIndex=51})
-    for _,line in ipairs({{.29,.48,.12,.88,26},{.66,.48,.12,.88,-26},{.48,.84,.8,.12,0}}) do
-        local part=make('Frame',mark,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(line[1],line[2]),
-            Size=UDim2.fromScale(line[3],line[4]),Rotation=line[5],BackgroundColor3=Color3.new(1,1,1),
-            BorderSizePixel=0,ZIndex=52});round(part,2)
-    end
-    label(launcher,'DELTA',{Position=UDim2.fromScale(0,.76),Size=UDim2.fromScale(1,.17),TextSize=9,
-        TextXAlignment=Enum.TextXAlignment.Center,Font=Enum.Font.GothamBold,ZIndex=52})
+    local launcher=make('ImageButton',gui,{Name='DeltaLauncher',Size=UDim2.fromOffset(56,56),
+        Position=UDim2.new(1,-78,.45,0),BackgroundColor3=colors.accent,BorderSizePixel=0,
+        Image=asset('logo.png'),ScaleType=Enum.ScaleType.Fit,ZIndex=50})
+    round(launcher,15);ui.launcher=launcher
     local keyPanel=nodes[1];keyPanel.Name='KeyPanel';keyPanel.Parent=gui
-    keyPanel.AnchorPoint=Vector2.new(.5,.5);keyPanel.Position=UDim2.fromScale(.5,.5)
-    keyPanel.Size=UDim2.fromOffset(370,510);keyPanel.Visible=false;keyPanel.ZIndex=40
-    round(keyPanel,12);local keyScale=make('UIScale',keyPanel,{Scale=1})
-    nodes[2].AnchorPoint=Vector2.new(.5,.5);nodes[2].Position=UDim2.fromScale(.5,.5)
-    nodes[2].Size=UDim2.fromScale(.86,.88)
-    nodes[7].Text='Enter the local key to open your Delta PC interface.'
-    nodes[23].Text='Independent GUI recreation · Local key'
+    -- The capture records the closed position (x=1.3). The open panel is right-aligned.
+    keyPanel.Position=UDim2.fromScale(1,.5);keyPanel.Visible=false;keyPanel.ZIndex=40
+    nodes[7].Text='Enter the local key to open this interface.'
+    nodes[23].Text='Local key version'
     nodes[11].Text='';nodes[11].ClearTextOnFocus=false
-    nodes[29].Position=UDim2.new(1,-12,0,12);nodes[29].Size=UDim2.fromOffset(25,25)
-    nodes[29].AnchorPoint=Vector2.new(1,0)
     ui.keyPanel=keyPanel
     local activePopup,dropdown,copyPopup,copyShade
-    local shade=button(window,'',{Name='PopupShade',Position=UDim2.fromScale(0,0),Size=UDim2.fromScale(1,1),
-        BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=.4,Visible=false,ZIndex=30})
     local function closePopup()
         if activePopup then activePopup.Visible=false;activePopup=nil end
-        shade.Visible=false
-        if dropdown then dropdown:Destroy();dropdown=nil end
+        nodes[621].Visible=false;nodes[81].Visible=false
+        if dropdown then
+            dropdown.Visible=false
+            local row=dropdown.Parent
+            if row then row.ZIndex=row:GetAttribute('RestingZ') or row.ZIndex end
+            dropdown=nil
+        end
         if copyPopup then copyPopup:Destroy();copyPopup=nil end
         if copyShade then copyShade:Destroy();copyShade=nil end
     end
     local function showPopup(popup)
-        closePopup();activePopup=popup;shade.Visible=true;popup.Visible=true
+        closePopup();activePopup=popup;popup.Visible=true
+        nodes[popup==nodes[622] and 621 or 81].Visible=true
     end
-    bind(shade,function() if state.settings.autoClose then closePopup() end end)
-    for _,id in ipairs({622,82}) do
-        local p=nodes[id];p.Parent=window;p.AnchorPoint=Vector2.new(.5,.5)
-        p.Position=UDim2.fromScale(.47,.5);p.Size=UDim2.fromOffset(470,id==622 and 480 or 400)
-        p.ZIndex=35;p.Visible=false
+    for _,id in ipairs({621,81}) do
+        nodes[id].Active=true
+        connect(nodes[id].InputBegan,function(input)
+            if state.settings.autoClose and (input.UserInputType==Enum.UserInputType.MouseButton1
+                or input.UserInputType==Enum.UserInputType.Touch) then closePopup() end
+        end)
     end
-    nodes[621]:Destroy();nodes[81]:Destroy()
+    nodes[622].Visible=false;nodes[82].Visible=false
     local function copy(text)
         local clipboard=api('setclipboard') or api('toclipboard')
         if type(clipboard)=='function' then
@@ -295,7 +252,7 @@ return function(config)
         if state.locked or not pages[page] then return end
         closePopup();state.page=page
         for name,id in pairs(pages) do nodes[id].Visible=state.opened and name==page end
-        for _,item in ipairs(nav) do nodes[item[1]].BackgroundColor3=item[2]==page and colors.accent or colors.panel end
+        for _,item in ipairs(nav) do nodes[item[1]].BackgroundColor3=item[2]==page and nodes[58].Value or nodes[59].Value end
         if page=='Scripthub' and not hubLoaded then hubSearch(1) end
     end
     local autoExecuted=false
@@ -328,7 +285,7 @@ return function(config)
     bind(nodes[24],function() copy('https://discord.gg/deltax') end)
     bind(nodes[26],function() copy('https://discord.gg/deltax') end)
     -- Launcher dragging has one global listener pair, and retains suppression through release.
-    local drag,headerDrag,suppressClick
+    local drag,suppressClick
     local function launcherSize() return ({Small=44,Medium=56,Large=72})[state.settings.iconSize] end
     local function placeLauncher(x,y)
         local v=viewport();local size=launcherSize()
@@ -338,14 +295,10 @@ return function(config)
     end
     local function resize()
         local v=viewport()
-        scale.Scale=math.min(1,(v.X-24)/1080,(v.Y-24)/660)
-        keyScale.Scale=math.min(1,(v.X-24)/370,(v.Y-24)/510)
         local size=launcherSize();launcher.Size=UDim2.fromOffset(size,size)
         local pos=state.launcher or {x=.94,y=.45}
         placeLauncher(pos.x*(v.X-size),pos.y*(v.Y-size))
         toast.Size=UDim2.fromOffset(math.min(600,math.max(200,v.X-24)),48)
-        -- Recenter on viewport changes so the panel cannot remain off-screen.
-        window.Position=UDim2.fromScale(.5,.5)
     end
     connect(launcher.InputBegan,function(input)
         if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
@@ -357,12 +310,6 @@ return function(config)
         if suppressClick or (drag and drag.moved) then return end
         open()
     end)
-    connect(header.InputBegan,function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            headerDrag={input=input,start=input.Position,x=window.AbsolutePosition.X+window.AbsoluteSize.X/2,
-                y=window.AbsolutePosition.Y+window.AbsoluteSize.Y/2}
-        end
-    end)
     local function sameMovement(info,input)
         return input==info.input or (info.input.UserInputType==Enum.UserInputType.MouseButton1
             and input.UserInputType==Enum.UserInputType.MouseMovement)
@@ -373,13 +320,6 @@ return function(config)
             drag.moved=drag.moved or Core.wasDragged(dx,dy)
             if drag.moved then suppressClick=true;placeLauncher(drag.x+dx,drag.y+dy) end
         end
-        if headerDrag and sameMovement(headerDrag,input) then
-            local v=viewport();local halfW=window.AbsoluteSize.X/2;local halfH=window.AbsoluteSize.Y/2
-            local x=headerDrag.x+input.Position.X-headerDrag.start.X
-            local y=headerDrag.y+input.Position.Y-headerDrag.start.Y
-            x=math.max(halfW+6,math.min(x,v.X-halfW-6));y=math.max(halfH+6,math.min(y,v.Y-halfH-6))
-            window.Position=UDim2.fromOffset(x,y)
-        end
     end)
     connect(Input.InputEnded,function(input)
         if drag and (input==drag.input or (input.UserInputType==Enum.UserInputType.MouseButton1
@@ -387,7 +327,6 @@ return function(config)
             suppressClick=drag.moved;drag=nil;persist()
             later(.1,function() if not drag then suppressClick=false end end)
         end
-        if headerDrag and input==headerDrag.input then headerDrag=nil end
     end)
     local cameraConnection
     local function watchCamera()
@@ -399,37 +338,24 @@ return function(config)
     watchCamera()
     -- Editor: one TextBox, separate source for each tab, and one execution handler per action.
     local editor=nodes[514];ui.editor=editor
-    editor.Text='';editor.PlaceholderText='-- Paste your Lua script here\n-- Ctrl+Enter to execute'
-    editor.ClearTextOnFocus=false;editor.MultiLine=true;editor.Font=Enum.Font.Code
-    editor.TextSize=16;editor.LineHeight=1.2;editor.TextWrapped=false;editor.RichText=false
-    editor.TextEditable=true;editor.AutomaticSize=Enum.AutomaticSize.None
-    editor.Position=UDim2.fromOffset(42,8);editor.Size=UDim2.new(1,-58,1,-16)
-    nodes[513].Active=true;nodes[513].ScrollBarThickness=5;nodes[513].AutomaticCanvasSize=Enum.AutomaticSize.None
+    editor.Text='';editor.ClearTextOnFocus=false;editor.MultiLine=true
+    editor.TextWrapped=false;editor.RichText=false;editor.TextEditable=true
+    editor.AutomaticSize=Enum.AutomaticSize.None
+    nodes[513].Active=true;nodes[513].AutomaticCanvasSize=Enum.AutomaticSize.None
     nodes[513].ScrollingDirection=Enum.ScrollingDirection.XY
-    nodes[413].AutomaticCanvasSize=Enum.AutomaticSize.X;nodes[413].CanvasSize=UDim2.new()
-    nodes[413].Size=UDim2.new(1,-64,0,48);nodes[413].Position=UDim2.fromOffset(5,8);nodes[413].ZIndex=20
-    nodes[371].AnchorPoint=Vector2.new(1,0);nodes[371].Position=UDim2.new(1,-10,0,12)
-    nodes[371].Size=UDim2.fromOffset(36,36);nodes[371].ZIndex=25
-    nodes[372].AnchorPoint=Vector2.new(.5,.5);nodes[372].Position=UDim2.fromScale(.5,.5)
-    nodes[372].Size=UDim2.fromScale(.75,.75)
-    nodes[415].HorizontalAlignment=Enum.HorizontalAlignment.Left
-    nodes[414].PaddingLeft=UDim.new(0,5);nodes[414].PaddingRight=UDim.new(0,5)
-    nodes[415].Padding=UDim.new(0,6)
-    nodes[421]:Destroy()
-    nodes[416].LayoutOrder=10000;nodes[416].Size=UDim2.fromOffset(32,32)
-    local lineNumbers=label(nodes[513],'1',{Name='LineNumbers',Position=UDim2.fromOffset(2,8),
-        Size=UDim2.fromOffset(30,300),Font=Enum.Font.Code,TextSize=16,TextYAlignment=Enum.TextYAlignment.Top,
-        TextXAlignment=Enum.TextXAlignment.Right,TextColor3=colors.muted,LineHeight=1.2})
+    nodes[413].AutomaticCanvasSize=Enum.AutomaticSize.None
     local editing=false
     local function measureEditor()
-        local count,maxWidth=1,0;local numbers={'1'}
+        local count,maxWidth=1,0
         for line in (editor.Text..'\n'):gmatch('(.-)\n') do maxWidth=math.max(maxWidth,#line) end
-        for _ in editor.Text:gmatch('\n') do count=count+1;if count<=5000 then table.insert(numbers,tostring(count)) end end
-        lineNumbers.Text=table.concat(numbers,'\n')
-        local width=math.max(nodes[513].AbsoluteSize.X/scale.Scale-58,math.min(20000,maxWidth*10+20))
-        local height=math.max(nodes[513].AbsoluteSize.Y/scale.Scale-16,count*20+20)
-        editor.Size=UDim2.fromOffset(width,height);lineNumbers.Size=UDim2.fromOffset(30,height)
-        nodes[513].CanvasSize=UDim2.fromOffset(width+60,height+20)
+        for _ in editor.Text:gmatch('\n') do count=count+1 end
+        local v=nodes[513].AbsoluteSize
+        local width=math.max(v.X*.98820245,math.min(40000,maxWidth*editor.TextSize+20))
+        local height=math.max(v.Y*.97169548,count*editor.TextSize*editor.LineHeight+16)
+        -- Convert source scale coordinates to viewport pixels before enlarging the scroll canvas.
+        editor.Position=UDim2.fromOffset(v.X*.011494522,v.Y*.012946978+3)
+        editor.Size=UDim2.fromOffset(width,height)
+        nodes[513].CanvasSize=UDim2.fromOffset(width+v.X*.011494522+8,height+v.Y*.012946978+12)
     end
     local renderTabs
     local function loadTab()
@@ -440,16 +366,23 @@ return function(config)
     renderTabs=function()
         for _,c in ipairs(tabConnections) do c:Disconnect() end;tabConnections={}
         for _,child in ipairs(nodes[413]:GetChildren()) do if child.Name:match('^Tab_') then child:Destroy() end end
+        local size=nodes[413].AbsoluteSize
+        local tabWidth=size.X*.23816878
+        local gap=size.X*.01
+        nodes[415].Padding=UDim.new(0,gap)
+        nodes[416].LayoutOrder=10000
+        nodes[416].Size=UDim2.new(0,size.X*.05266,.61546,0)
+        nodes[413].CanvasSize=UDim2.fromOffset(math.max(size.X,#state.tabs*(tabWidth+gap)+size.X*.08),0)
         for i,t in ipairs(state.tabs) do
-            local b=button(nodes[413],t.title,{Name='Tab_'..t.id,LayoutOrder=i,Size=UDim2.fromOffset(145,32),
-                BackgroundColor3=t.id==state.activeTab and colors.panel or colors.field,TextXAlignment=Enum.TextXAlignment.Left})
-            make('UIPadding',b,{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,28)})
-            local x=button(b,'×',{Name='Close',Size=UDim2.fromOffset(24,24),Position=UDim2.new(1,0,.5,-12),
-                BackgroundTransparency=1,TextSize=18})
-            table.insert(tabConnections,connect(b.Activated,function() state:selectTab(t.id);loadTab();persist() end))
-            table.insert(tabConnections,connect(x.Activated,function() state:removeTab(t.id);loadTab();persist() end))
+            local b,parts=cloneTemplate(421,nodes[413])
+            b.Name='Tab_'..t.id;b.LayoutOrder=i;b.Size=UDim2.new(0,tabWidth,.8693818,0)
+            b.BackgroundTransparency=t.id==state.activeTab and 0 or .6
+            parts[423].Text=t.title;parts[424].Name='Close'
+            table.insert(tabConnections,bind(b,function() state:selectTab(t.id);loadTab();persist() end))
+            table.insert(tabConnections,bind(parts[424],function() state:removeTab(t.id);loadTab();persist() end))
         end
     end
+    connect(nodes[413]:GetPropertyChangedSignal('AbsoluteSize'),renderTabs)
     connect(editor:GetPropertyChangedSignal('Text'),function()
         if not editing then state:updateSource(editor.Text);persist();measureEditor() end
     end)
@@ -477,48 +410,44 @@ return function(config)
         if input.KeyCode==Enum.KeyCode.RightShift and not processed and not Input:GetFocusedTextBox() then
             if state.opened or keyPanel.Visible then hide() else open() end
         elseif input.KeyCode==Enum.KeyCode.Return and state.opened and not state.locked
-            and state.page=='Executor' and not activePopup
+            and state.page=='Executor' and not activePopup and not copyPopup
             and (Input:IsKeyDown(Enum.KeyCode.LeftControl) or Input:IsKeyDown(Enum.KeyCode.RightControl)) then
             local focused=Input:GetFocusedTextBox()
             if not focused or focused==editor then execute(editor.Text,state:currentTab().title) end
-        elseif input.KeyCode==Enum.KeyCode.Escape and state.opened and activePopup then closePopup() end
+        elseif input.KeyCode==Enum.KeyCode.Escape and (activePopup or dropdown or copyPopup) then closePopup() end
     end)
     -- Saved scripts live in the local frontend workspace; upload never sends them to a server.
-    nodes[550].Size=UDim2.new(.77,0,0,24);nodes[550].TextScaled=false;nodes[550].TextSize=15
-    nodes[555].VerticalAlignment=Enum.VerticalAlignment.Top;nodes[555].Padding=UDim.new(0,8)
-    nodes[554].AutomaticCanvasSize=Enum.AutomaticSize.Y;nodes[554].CanvasSize=UDim2.new();nodes[554].ScrollBarThickness=5
+    nodes[554].AutomaticCanvasSize=Enum.AutomaticSize.None
     nodes[634].Text='';nodes[634].PlaceholderText='Script title';nodes[634].ClearTextOnFocus=false
     nodes[639].Text='';nodes[639].PlaceholderText='Paste Lua source or a raw HTTPS URL';nodes[639].ClearTextOnFocus=false
-    nodes[639].MultiLine=true;nodes[639].TextSize=14;nodes[639].TextScaled=false;nodes[639].TextWrapped=true
+    nodes[639].MultiLine=true;nodes[639].TextScaled=false;nodes[639].TextWrapped=true
     nodes[626].Text='Save a script to this PC. It will appear on your Home page.'
     local savedConnections={}
     local function renderSaved()
         for _,c in ipairs(savedConnections) do c:Disconnect() end;savedConnections={}
         for _,child in ipairs(nodes[554]:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
         local items=state:filterSaved(nodes[550].Text)
-        if #items==0 then label(nodes[554],'No saved scripts. Click UPLOAD to add one.',{Size=UDim2.new(1,0,0,70),
-            TextColor3=colors.muted,TextXAlignment=Enum.TextXAlignment.Center}) end
+        local h=nodes[554].AbsoluteSize.Y;local rowHeight=h*3*.046236556
+        local gap=h*3*.005;nodes[555].Padding=UDim.new(0,gap)
+        nodes[554].CanvasSize=UDim2.fromOffset(0,math.max(h,#items*(rowHeight+gap)))
         for i,item in ipairs(items) do
-            local row=make('Frame',nodes[554],{Name='Saved_'..item.id,LayoutOrder=i,Size=UDim2.new(1,-8,0,66),
-                BackgroundColor3=colors.panel,BorderSizePixel=0});round(row,9)
-            label(row,item.title,{Position=UDim2.fromOffset(16,8),Size=UDim2.new(1,-355,0,24),
-                Font=Enum.Font.GothamMedium,TextTruncate=Enum.TextTruncate.AtEnd})
-            label(row,tostring(#item.source)..' characters',{Position=UDim2.fromOffset(16,35),Size=UDim2.fromOffset(200,18),
-                TextSize=11,TextColor3=colors.muted})
-            local specs={{'Edit','EDIT',-330},{'Auto',item.autoExecute and 'AUTO: ON' or 'AUTO: OFF',-250},
-                {'Delete','DELETE',-165},{'Run','EXECUTE',-85}}
-            for _,s in ipairs(specs) do
-                local b=button(row,s[2],{Name=s[1],Position=UDim2.new(1,s[3],.5,-16),Size=UDim2.fromOffset(74,32),
-                    BackgroundColor3=s[1]=='Run' and colors.accent or colors.field,TextSize=10})
-                table.insert(savedConnections,connect(b.Activated,function()
-                    if s[1]=='Run' then execute(item.source,item.title)
-                    elseif s[1]=='Delete' then state:deleteScript(item.id);renderSaved();persist()
-                    elseif s[1]=='Auto' then item.autoExecute=not item.autoExecute;renderSaved();persist()
-                    elseif newTab(item.title,item.source) then navigate('Executor') end
-                end))
-            end
+            local row,parts=cloneTemplate(556,nodes[554]);row.Name='Saved_'..item.id;row.LayoutOrder=i
+            row.Size=UDim2.new(.9979484,0,0,rowHeight);parts[558].Text=item.title
+            parts[560].Name='Run';parts[563].Name='Delete'
+            parts[566].Visible=item.autoExecute==true;parts[568].Text='AUTO'
+            -- The original row has Execute/Delete only. Title click edits; right-click marks AUTO.
+            local title=parts[558]
+            local edit=make('TextButton',row,{Name='Edit',Text='',BackgroundTransparency=1,
+                Position=title.Position,Size=title.Size,AnchorPoint=title.AnchorPoint,ZIndex=title.ZIndex+1})
+            table.insert(savedConnections,bind(parts[560],function() execute(item.source,item.title) end))
+            table.insert(savedConnections,bind(parts[563],function() state:deleteScript(item.id);renderSaved();persist() end))
+            table.insert(savedConnections,bind(edit,function() if newTab(item.title,item.source) then navigate('Executor') end end))
+            table.insert(savedConnections,connect(edit.MouseButton2Click,function()
+                item.autoExecute=not item.autoExecute;renderSaved();persist()
+            end))
         end
     end
+    connect(nodes[554]:GetPropertyChangedSignal('AbsoluteSize'),renderSaved)
     ui.renderSaved=renderSaved
     connect(nodes[550]:GetPropertyChangedSignal('Text'),renderSaved)
     bind(nodes[551],function() nodes[634].Text='';nodes[639].Text='';showPopup(nodes[622]) end)
@@ -545,28 +474,35 @@ return function(config)
     -- ScriptBlox: retain the selected object by ID; never search by its display title again.
     local hub={page=1,total=1,serial=0,selected=nil,busy=false,loaded=false}
     local hubConnections={}
-    nodes[67].CellSize=UDim2.new(1/3,-12,0,150);nodes[67].CellPadding=UDim2.fromOffset(12,12)
-    nodes[67].VerticalAlignment=Enum.VerticalAlignment.Top;nodes[67].HorizontalAlignment=Enum.HorizontalAlignment.Left
-    nodes[66].Size=UDim2.new(1,0,.80,-30);nodes[66].Position=UDim2.new(0,0,0,84);nodes[66].AnchorPoint=Vector2.new(0,0)
-    nodes[66].AutomaticCanvasSize=Enum.AutomaticSize.Y;nodes[66].CanvasSize=UDim2.new();nodes[66].ScrollBarThickness=5
-    nodes[65].TextScaled=false;nodes[65].TextSize=15;nodes[65].Size=UDim2.new(.76,0,0,24)
-    local hubInfo=label(nodes[60],'Powered by ScriptBlox.com',{Name='HubStatus',Position=UDim2.new(0,0,1,-24),
-        Size=UDim2.new(1,-240,0,24),TextSize=12,TextColor3=colors.muted})
-    local search=button(nodes[61],'SEARCH',{Name='Search',AnchorPoint=Vector2.new(1,.5),
-        Position=UDim2.new(1,-12,.5,0),Size=UDim2.fromOffset(90,30)},function() hubSearch(1) end)
-    local prev=button(nodes[60],'PREV',{Name='PreviousPage',Position=UDim2.new(1,-200,1,-30),Size=UDim2.fromOffset(90,28)},function()
-        if hub.page>1 then hubSearch(hub.page-1) end
+    nodes[66].AutomaticCanvasSize=Enum.AutomaticSize.None
+    local hubCount=0
+    local function sizeHub()
+        local v=nodes[66].AbsoluteSize
+        local cellW,cellH=v.X*.313,v.Y*.3
+        local gapX,gapY=v.X*.03,v.Y*.03
+        nodes[67].CellSize=UDim2.fromOffset(cellW,cellH);nodes[67].CellPadding=UDim2.fromOffset(gapX,gapY)
+        local columns=math.max(1,math.floor((v.X+gapX)/(cellW+gapX)))
+        nodes[66].CanvasSize=UDim2.fromOffset(0,math.max(v.Y,math.ceil(hubCount/columns)*(cellH+gapY)))
+    end
+    connect(nodes[66]:GetPropertyChangedSignal('AbsoluteSize'),sizeHub);sizeHub()
+    -- Search on Enter and load further pages near the bottom; no added toolbar.
+    local searchTap=make('TextButton',nodes[63],{Name='Search',Text='',BackgroundTransparency=1,
+        Size=UDim2.fromScale(1,1),ZIndex=nodes[63].ZIndex+1})
+    bind(searchTap,function() hubSearch(1) end)
+    connect(nodes[66]:GetPropertyChangedSignal('CanvasPosition'),function()
+        local scroll=nodes[66]
+        if not hub.busy and hub.page<hub.total and scroll.CanvasPosition.Y+scroll.AbsoluteSize.Y>=scroll.CanvasSize.Y.Offset-50 then
+            hubSearch(hub.page+1,true)
+        end
     end)
-    local nextButton=button(nodes[60],'NEXT',{Name='NextPage',Position=UDim2.new(1,-98,1,-30),Size=UDim2.fromOffset(90,28)},function()
-        if hub.page<hub.total then hubSearch(hub.page+1) end
-    end)
-    hubSearch=function(page)
+    hubSearch=function(page,append)
         hub.serial=hub.serial+1;local serial=hub.serial
         local query=nodes[65].Text:match('^%s*(.-)%s*$')
         local url='https://scriptblox.com/api/script/'..(query=='' and 'fetch' or 'search')
             ..'?mode=free&max=20&page='..tostring(page)
         if query~='' then url=url..'&q='..Http:UrlEncode(query) end
-        hubInfo.Text='Loading scripts...'
+        hub.busy=true
+        report('Loading scripts...')
         spawn(function()
             local ok,response=pcall(function()
                 local payload=Http:JSONDecode(httpGet(url))
@@ -575,30 +511,32 @@ return function(config)
                 return payload.result
             end)
             if ui.destroyed or serial~=hub.serial then return end
-            if not ok then hubInfo.Text='Search failed. Press SEARCH to retry.';report('ScriptBlox: '..tostring(response),'Error');return end
+            hub.busy=false
+            if not ok then report('ScriptBlox: '..tostring(response),'Error');return end
             hubLoaded=true;hub.page=page;hub.total=math.max(1,tonumber(response.totalPages) or 1)
-            for _,c in ipairs(hubConnections) do c:Disconnect() end;hubConnections={}
-            for _,child in ipairs(nodes[66]:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
-            nodes[66].CanvasPosition=Vector2.new(0,0)
-            local count=0
+            if not append then
+                for _,c in ipairs(hubConnections) do c:Disconnect() end;hubConnections={}
+                for _,child in ipairs(nodes[66]:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
+                nodes[66].CanvasPosition=Vector2.new(0,0);hubCount=0
+            end
+            local count=hubCount
             for _,item in ipairs(response.scripts) do
                 if type(item)=='table' and type(item.title)=='string' then
                     count=count+1
-                    local card=button(nodes[66],'',{Name='Hub_'..count,LayoutOrder=count,BackgroundColor3=colors.panel})
-                    label(card,item.title,{Position=UDim2.fromOffset(14,14),Size=UDim2.new(1,-28,0,55),
-                        Font=Enum.Font.GothamBold,TextSize=15,TextWrapped=true,TextYAlignment=Enum.TextYAlignment.Top})
-                    local gameName=type(item.game)=='table' and item.game.name or 'Universal'
-                    label(card,tostring(gameName),{Position=UDim2.fromOffset(14,76),Size=UDim2.new(1,-28,0,28),
-                        TextSize=12,TextColor3=colors.muted,TextTruncate=Enum.TextTruncate.AtEnd})
-                    label(card,(item.verified and 'VERIFIED  ·  ' or '')..tostring(item.views or 0)..' views',{
-                        Position=UDim2.fromOffset(14,120),Size=UDim2.new(1,-28,0,18),TextSize=11,TextColor3=colors.accent})
-                    table.insert(hubConnections,connect(card.Activated,function()
+                    local card,parts=cloneTemplate(69,nodes[66]);card.Name='Hub_'..count;card.LayoutOrder=count
+                    parts[74].Text=type(item.game)=='table' and tostring(item.game.name or 'Universal') or 'Universal'
+                    parts[75].Text=item.title;parts[76].Visible=item.verified==true
+                    parts[80].Text=tostring(item.views or 0)..' Views'
+                    -- Keep the captured card; request the actual game's thumbnail from Roblox.
+                    local gameId=type(item.game)=='table' and tonumber(item.game.gameId)
+                    card.Image=gameId and ('rbxthumb://type=GameIcon&id='..tostring(gameId)..'&w=512&h=512') or ''
+                    table.insert(hubConnections,bind(card,function()
                         hub.selected=item;nodes[85].Text=item.title;nodes[86].Text='Choose what to do with this script.';showPopup(nodes[82])
                     end))
                 end
             end
-            hubInfo.Text=(count==0 and 'No scripts found. ' or '')..'Page '..page..' / '..hub.total..'  ·  Powered by ScriptBlox.com'
-            prev.Active=page>1;nextButton.Active=page<hub.total
+            hubCount=count;sizeHub()
+            if count==0 then report('No scripts found.') end
         end)
     end
     ui.searchHub=hubSearch
@@ -637,25 +575,24 @@ return function(config)
         local panes={roblox={frame=nodes[646],scroll=nodes[656],search=nodes[662],clear=nodes[649]},
             runtime={frame=nodes[679],scroll=nodes[689],search=nodes[695],clear=nodes[682]}}
         for channel,p in pairs(panes) do
-            p.frame.AnchorPoint=Vector2.new(0,0);p.frame.Position=UDim2.fromScale(channel=='roblox' and 0 or .515,0)
-            p.frame.Size=UDim2.fromScale(.485,1);p.frame.ZIndex=2
-            p.scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;p.scroll.CanvasSize=UDim2.new();p.scroll.ScrollBarThickness=4
-            p.search.Text='';p.search.ClearTextOnFocus=false;p.search.PlaceholderText='Filter logs';p.search.TextSize=12
-            p.search.Size=UDim2.new(.65,0,0,24);p.search.Position=UDim2.new(.3,0,.17,0)
-            make('UIListLayout',p.scroll,{Padding=UDim.new(0,3),SortOrder=Enum.SortOrder.LayoutOrder})
+            p.scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;p.scroll.CanvasSize=UDim2.new()
+            p.search.Text='';p.search.ClearTextOnFocus=false
+            make('UIListLayout',p.scroll,{Padding=UDim.new(0,0),SortOrder=Enum.SortOrder.LayoutOrder})
             connect(p.search:GetPropertyChangedSignal('Text'),function() renderLogs(channel) end)
             bind(p.clear,function() state.logs[channel]={};renderLogs(channel) end)
         end
         nodes[694].Text='Script execution, errors and frontend messages.'
         renderLogs=function(channel)
             local p=panes[channel];if not p then return end
-            for _,child in ipairs(p.scroll:GetChildren()) do if child:IsA('TextLabel') then child:Destroy() end end
+            for _,child in ipairs(p.scroll:GetChildren()) do if child:IsA('GuiObject') then child:Destroy() end end
             local query=p.search.Text:lower()
             for i,entry in ipairs(state.logs[channel]) do
                 if entry.text:lower():find(query,1,true) then
-                    label(p.scroll,'['..entry.time..'] '..entry.text,{LayoutOrder=i,Size=UDim2.new(1,-12,0,0),
-                        AutomaticSize=Enum.AutomaticSize.Y,Font=Enum.Font.Code,TextSize=12,TextWrapped=true,
-                        TextColor3=entry.level=='Error' and colors.error or entry.level=='Warn' and Color3.fromRGB(250,194,108) or colors.text})
+                    local id=({Error=668,Warn=670,Info=674})[entry.level] or 672
+                    local row=cloneTemplate(id,p.scroll);row.LayoutOrder=i
+                    local content=row:FindFirstChild('Content');content.Text='['..entry.time..'] '..entry.text
+                    content.TextWrapped=true;content.AutomaticSize=Enum.AutomaticSize.Y
+                    content.Size=UDim2.new(.98,0,0,20);row.AutomaticSize=Enum.AutomaticSize.Y
                 end
             end
         end
@@ -671,9 +608,18 @@ return function(config)
     do
         local settingsRows={}
         local mode='All'
-        nodes[128].VerticalAlignment=Enum.VerticalAlignment.Top;nodes[128].Padding=UDim.new(0,8)
-        nodes[127].AutomaticCanvasSize=Enum.AutomaticSize.Y;nodes[127].CanvasSize=UDim2.new();nodes[127].ScrollBarThickness=5
-        nodes[114].TextSize=15;nodes[114].TextScaled=false
+        nodes[127].AutomaticCanvasSize=Enum.AutomaticSize.None
+        local function sizeSettings()
+            local h=nodes[127].AbsoluteSize.Y;local gap=h*4*.005
+            nodes[128].Padding=UDim.new(0,gap)
+            local total=0
+            for _,row in ipairs(settingsRows) do
+                local height=h*4*row.height
+                row.frame.Size=UDim2.new(1,0,0,height)
+                if row.frame.Visible then total=total+height+gap end
+            end
+            nodes[127].CanvasSize=UDim2.fromOffset(0,math.max(h,total))
+        end
         local function filter()
             local query=nodes[114].Text:lower()
             for _,row in ipairs(settingsRows) do
@@ -681,19 +627,17 @@ return function(config)
                 local enabled=row.key and state.settings[row.key]==true
                 row.frame.Visible=matches and (mode=='All' or (mode=='Enabled' and enabled) or (mode=='Disabled' and row.toggle and not enabled))
             end
+            sizeSettings()
         end
         local function register(id,title,key,toggle)
-            local frame=nodes[id];frame.Size=UDim2.new(1,-8,0,76);frame.LayoutOrder=id;frame.ClipsDescendants=false
-            for _,child in ipairs(frame:GetChildren()) do
-                if child:IsA('TextLabel') then
-                    child.TextScaled=false;child.TextSize=child.Name=='Title' and 15 or 12
-                    child.AnchorPoint=Vector2.new(0,0);child.Position=UDim2.fromOffset(16,child.Name=='Title' and 13 or 39)
-                    child.Size=UDim2.new(1,-195,0,child.Name=='Title' and 22 or 30);child.TextWrapped=true
-                end
-            end
-            table.insert(settingsRows,{frame=frame,title=title,key=key,toggle=toggle})
+            local frame=nodes[id];frame.ClipsDescendants=false
+            frame:SetAttribute('RestingZ',frame.ZIndex)
+            table.insert(settingsRows,{frame=frame,title=title,key=key,toggle=toggle,height=frame.Size.Y.Scale})
             return frame
         end
+        connect(nodes[127]:GetPropertyChangedSignal('AbsoluteSize'),sizeSettings)
+        local originalEditor={background=nodes[369].BackgroundColor3,color=editor.TextColor3,placeholder=editor.PlaceholderColor3,
+            image=nodes[368].ImageTransparency,overlay=nodes[369].ImageTransparency,alpha=nodes[369].BackgroundTransparency}
         local function iconAppearance()
             local palette={Blue=Color3.fromRGB(34,160,255),Green=Color3.fromRGB(46,184,135),Purple=Color3.fromRGB(153,100,241)}
             launcher.BackgroundColor3=palette[state.settings.iconColor]
@@ -703,10 +647,13 @@ return function(config)
         end
         local function applyTheme()
             local name=state.settings.theme
-            local bg=name=='Light' and Color3.fromRGB(235,238,244) or name=='Amoled' and Color3.new(0,0,0) or colors.field
-            local fg=name=='Light' and Color3.fromRGB(32,38,52) or colors.text
+            local bg=name=='Light' and Color3.fromRGB(235,238,244) or name=='Amoled' and Color3.new(0,0,0) or originalEditor.background
+            local fg=name=='Light' and Color3.fromRGB(32,38,52) or originalEditor.color
             nodes[369].BackgroundColor3=bg;editor.TextColor3=fg
-            editor.PlaceholderColor3=name=='Light' and Color3.fromRGB(90,100,115) or colors.muted
+            editor.PlaceholderColor3=name=='Light' and Color3.fromRGB(90,100,115) or originalEditor.placeholder
+            nodes[368].ImageTransparency=name=='Default' and originalEditor.image or 1
+            nodes[369].ImageTransparency=name=='Default' and originalEditor.overlay or 1
+            nodes[369].BackgroundTransparency=name=='Default' and originalEditor.alpha or 0
         end
         local function applySetting(key,value)
             if key=='fpsCap' then
@@ -727,15 +674,16 @@ return function(config)
             {151,'RakNet',nil,156,161},{162,'Verify Teleports',nil,167,172},
             {173,'Auto Execute','autoExecute',178,183},{184,'Anti AFK','antiAfk',189,194},
             {195,'Auto Close','autoClose',200,205},{206,'Console','console',211,216}}
+        local onStyle={background=nodes[134].BackgroundColor3,position=nodes[136].Position,anchor=nodes[136].AnchorPoint,color=nodes[136].BackgroundColor3}
+        local offStyle={background=nodes[156].BackgroundColor3,position=nodes[158].Position,anchor=nodes[158].AnchorPoint,color=nodes[158].BackgroundColor3}
         for _,item in ipairs(switches) do
             local frame=register(item[1],item[2],item[3],true);local sw=nodes[item[4]]
-            sw.AnchorPoint=Vector2.new(1,.5);sw.Position=UDim2.new(1,-18,.5,0);sw.Size=UDim2.fromOffset(44,24)
-            removeChildren(sw);round(sw,12)
-            local knob=make('Frame',sw,{Name='Knob',Size=UDim2.fromOffset(18,18),BackgroundColor3=colors.text,BorderSizePixel=0});round(knob,9)
+            local knob=sw:FindFirstChild('ImageButton')
             local function paint()
                 local on=item[3] and state.settings[item[3]]==true
-                sw.BackgroundColor3=on and colors.accent or Color3.fromRGB(68,73,86)
-                knob.Position=UDim2.new(on and 1 or 0,on and -21 or 3,0,3)
+                local style=on and onStyle or offStyle
+                sw.BackgroundColor3=style.background;knob.Position=style.position
+                knob.AnchorPoint=style.anchor;knob.BackgroundColor3=style.color
                 nodes[item[5]].Value=on==true
             end
             if not item[3] then frame.Desc.Text='Native Delta feature · unavailable in this frontend.'
@@ -747,35 +695,40 @@ return function(config)
             end)
             paint()
         end
-        local function showDropdown(anchor,values,selected,choose)
-            closePopup()
-            local p=make('Frame',gui,{Name='Dropdown',Position=UDim2.fromOffset(anchor.AbsolutePosition.X,anchor.AbsolutePosition.Y+anchor.AbsoluteSize.Y+4),
-                Size=UDim2.fromOffset(175,#values*38+12),BackgroundColor3=colors.panel,BorderSizePixel=0,ZIndex=80});round(p,8)
-            dropdown=p
-            local v=viewport()
-            p.Position=UDim2.fromOffset(math.max(8,math.min(anchor.AbsolutePosition.X,v.X-183)),
-                math.max(8,math.min(anchor.AbsolutePosition.Y+anchor.AbsoluteSize.Y+4,v.Y-#values*38-20)))
-            for i,value in ipairs(values) do
-                button(p,(value==selected and '•  ' or '')..value,{Position=UDim2.fromOffset(6,6+(i-1)*38),
-                    Size=UDim2.fromOffset(163,32),ZIndex=81},function() choose(value);closePopup() end)
+        local function wireDropdown(anchor,panel,key,choices,title)
+            local row=panel.Parent;row:SetAttribute('RestingZ',row.ZIndex)
+            local function paint()
+                if title then title.Text=state.settings[key] end
+                for _,choice in ipairs(choices) do nodes[choice[2]].Checked.Visible=state.settings[key]==choice[1] end
             end
+            local function toggle()
+                local wasOpen=panel.Visible
+                closePopup()
+                if not wasOpen then
+                    dropdown=panel;panel.Visible=true;row.ZIndex=30;paint()
+                end
+            end
+            bind(anchor,toggle)
+            for _,child in ipairs(anchor:GetChildren()) do
+                if child:IsA('GuiButton') then bind(child,toggle) end
+            end
+            for _,choice in ipairs(choices) do
+                local function choose()
+                    if applySetting(key,choice[1]) then paint();closePopup() end
+                end
+                bind(nodes[choice[2]],choose);bind(nodes[choice[2]].Checked,choose)
+            end
+            paint();return toggle
         end
-        local drops={{217,'FPS Cap','fpsCap',221,223,224,225,{'60 FPS','120 FPS','Max FPS'}},
-            {246,'Icon Size','iconSize',250,252,253,254,{'Small','Medium','Large'}},
-            {275,'Icon Shape','iconShape',279,281,282,283,{'Circle','Squircle','Square'}},
-            {304,'Icon Color','iconColor',308,310,311,312,{'Blue','Green','Purple'}}}
+        local drops={{217,'FPS Cap','fpsCap',221,223,225,{{'120 FPS',227},{'60 FPS',234},{'Max FPS',240}}},
+            {246,'Icon Size','iconSize',250,252,254,{{'Small',256},{'Medium',263},{'Large',269}}},
+            {275,'Icon Shape','iconShape',279,281,283,{{'Circle',285},{'Squircle',292},{'Square',298}}},
+            {304,'Icon Color','iconColor',308,310,312,{{'Green',314},{'Blue',321},{'Purple',327}}}}
         for _,item in ipairs(drops) do
             register(item[1],item[2],item[3],false)
-            nodes[item[7]]:Destroy();nodes[item[6]]:Destroy()
-            local b=nodes[item[4]];b.AnchorPoint=Vector2.new(1,.5);b.Position=UDim2.new(1,-16,.5,0);b.Size=UDim2.fromOffset(140,34)
-            nodes[item[5]].Text=state.settings[item[3]];nodes[item[5]].TextScaled=false;nodes[item[5]].TextSize=12
-            bind(b,function() showDropdown(b,item[8],state.settings[item[3]],function(value)
-                if applySetting(item[3],value) then nodes[item[5]].Text=value end
-            end) end)
+            wireDropdown(nodes[item[4]],nodes[item[6]],item[3],item[7],nodes[item[5]])
         end
-        nodes[375]:Destroy()
-        local theme=function() showDropdown(nodes[371],{'Default','Light','Amoled'},state.settings.theme,function(v) applySetting('theme',v) end) end
-        bind(nodes[371],theme);bind(nodes[372],theme)
+        wireDropdown(nodes[371],nodes[375],'theme',{{'Default',377},{'Light',383},{'Amoled',389}})
         local function teleport(small)
             report('Finding a server...')
             spawn(function()
@@ -797,7 +750,7 @@ return function(config)
         end
         for _,item in ipairs({{333,'Join Discord',338},{341,'Rejoin',346},{349,'Small Server',354},{357,'Serverhop',362}}) do
             register(item[1],item[2],nil,false)
-            local b=nodes[item[3]];b.AnchorPoint=Vector2.new(1,.5);b.Position=UDim2.new(1,-16,.5,0);b.Size=UDim2.fromOffset(140,34)
+            local b=nodes[item[3]]
             bind(b,function()
                 if item[2]=='Join Discord' then copy('https://discord.gg/deltax')
                 elseif item[2]=='Rejoin' then
@@ -840,16 +793,6 @@ return function(config)
             nodes[541].Text=ok and string.format('%.0f MS Ping',ping) or 'Ping unavailable'
             frames=0;elapsed=0
         end)
-    end
-    -- Optional exact asset IDs or local PNGs can replace fallbacks without touching logic.
-    if type(options.Assets)=='table' then
-        local map={i1={53},i2={63,112,548},i3={49},i7={37},i9={29,106,628},i12={45},i15={41},i18={57}}
-        for asset,ids in pairs(map) do
-            local uri=options.Assets[asset]
-            if type(uri)=='string' then
-                for _,id in ipairs(ids) do if nodes[id] and nodes[id].Parent then nodes[id].Image=uri end end
-            end
-        end
     end
     local parented=false
     local hidden=api('gethui')
@@ -900,12 +843,13 @@ if not ok then warn('[Delta PC] Teleport reload failed: '..tostring(err)) end
         for _,connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
         for handle in pairs(tasks) do pcall(task.cancel,handle) end
         tasks={};gui:Destroy()
+        for _,id in ipairs(templateIds) do nodes[id]:Destroy() end
         if shared.__DeltaPC==ui then shared.__DeltaPC=nil end
     end
     shared.__DeltaPC=ui
     connect(gui.Destroying,function() ui.close() end)
     hide()
-    if #propertyFailures>0 then report(tostring(#propertyFailures)..' captured properties were unsupported; fallbacks applied.') end
+    if #propertyFailures>0 then report(tostring(#propertyFailures)..' captured properties were unsupported by this Roblox client; inspect ui.propertyFailures.') end
     if type(api('writefile'))~='function' then report('Ready. File saving unavailable; scripts persist for this session.') end
     if not ui.teleportSupported then report('Teleport auto reload unavailable: your executor has no queue_on_teleport.') end
     return ui

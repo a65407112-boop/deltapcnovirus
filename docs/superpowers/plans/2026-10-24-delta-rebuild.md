@@ -13,7 +13,7 @@
 ## Global constraints
 - Existing executor supplies loadstring; this does not install native Delta.
 - Preserve keyed.lua/keyless.lua URLs; key is CHATGPT-MADE-THIS.
-- No original button handlers or Assets.zip are available.
+- The original button handlers are absent; the model and all original Assets.zip files are available.
 - Never execute external scripts during validation.
 - Keep Git history and update main with an expected-head check.
 
@@ -37,6 +37,11 @@
 
 ## Task 3: Verify and publish
 - [x] Run the full suite and deterministic build, review final source, resolve material findings.
-- [x] Write README with tested behavior, missing assets/native limitations and the two loadstrings.
+- [x] Write README with tested behavior, original assets and native limitations and the two loadstrings.
 - [ ] Publish a replacement tree atomically to GitHub, preserving parent history.
 - [ ] Read the published files and compare their SHA256 to local files.
+
+
+## Source-fidelity correction (2026-10-24)
+
+Assets.zip is now available. The user explicitly rejected the custom desktop presentation. Replace that presentation with the original supplied geometry and controls, clone its dynamic templates, map all original textures and Montserrat font to cached local custom assets, keep the current functional behavior, and publish both loaders at the same URLs. No redesign or additional design approval is needed. Validate source fidelity, asset integrity, cloned input targets and prior functionality before publication.

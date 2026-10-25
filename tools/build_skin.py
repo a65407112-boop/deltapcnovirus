@@ -1,4 +1,4 @@
-"""Generate the captured UI using only public, portable Roblox properties."""
+"""Generate the supplied GUI without redesigning its geometry or appearance."""
 import importlib.util
 import json
 from pathlib import Path
@@ -9,6 +9,8 @@ decoder_path=Path(sys.argv[2]) if len(sys.argv)>2 else ROOT/'tools/read_rbxm.py'
 spec=importlib.util.spec_from_file_location('reader',decoder_path)
 reader=importlib.util.module_from_spec(spec);spec.loader.exec_module(reader)
 nodes,types=reader.read(sys.argv[1])
+# Compress extreme captured ZIndex values without losing a single ordering relation.
+layers={v:i for i,v in enumerate(sorted({n['props']['ZIndex'] for n in nodes.values() if 'ZIndex' in n['props']}))}
 
 SKIP=set('AttributesSerialize Capabilities DefinesCapabilities Tags SerializedOverrides Source AutoLocalize RootLocalizationTable LocalizationMatchIdentifier LocalizationMatchedSourceText OpenTypeFeatures Draggable Selected Sink HoverHapticEffect PressHapticEffect IconTint BorderOffset BorderStrokePosition StrokeSizingMode'.split())
 SKIP.update('SelectionBehaviorDown SelectionBehaviorLeft SelectionBehaviorRight SelectionBehaviorUp SelectionGroup NextSelectionDown NextSelectionLeft NextSelectionRight NextSelectionUp SelectionImageObject SelectionOrder'.split())
@@ -22,7 +24,10 @@ def number(n):
     return str(int(n)) if int(n)==n else format(n,'.8g')
 def val(kind,name,v):
     typ=types[kind+'.'+name]
-    if typ==1:return quote(v)
+    if typ==1:
+        if name=='Image' and v.startswith('rbxasset://') and not v.startswith('rbxasset://textures/'):
+            return 'asset('+quote(v)+')'
+        return quote(v)
     if typ==2:return str(v).lower()
     if typ in (3,4):return number(v)
     if typ==6:return 'UDim.new('+','.join(map(number,v))+')'
@@ -36,13 +41,12 @@ def val(kind,name,v):
         return 'E('+quote(category)+','+str(v)+')'
     if typ==32:
         family=v['family']
-        if not family.startswith('rbxasset://fonts/'):
-            family='rbxasset://fonts/families/RobotoMono.json'
-        return 'Font.new('+quote(family)+',E("FontWeight",'+str(v['weight'])+'),E("FontStyle",'+str(v['style'])+'))'
+        family=quote(family) if family.startswith('rbxasset://fonts/') else 'asset('+quote(family)+')'
+        return 'Font.new('+family+',E("FontWeight",'+str(v['weight'])+'),E("FontStyle",'+str(v['style'])+'))'
     return None
 
 lines=['-- Generated from the supplied gethui snapshot. No exported scripts are executed.',
-'return function()',
+'return function(asset)',
 'local nodes, failures = {}, {}',
 'local enums = {}',
 'local function E(category, value)',
@@ -68,9 +72,7 @@ for n in sorted(nodes.values(),key=lambda n:n['id']):
         if k in SKIP or k.endswith('Radius') or k=='Style':continue
         if k=='Name' and ('�' in v or any(ord(x)<32 for x in v)):
             v='Captured'+str(n['id'])
-        if k=='ZIndex':v=min(v,20)
-        if k=='Image' and v.startswith('rbxasset://') and not v.startswith('rbxasset://textures/'):
-            v=''
+        if k=='ZIndex':v=layers[v]
         if k=='Text' and n['id']==514:v=''
         value=val(n['class'],k,v)
         if value is not None:props.append(k+'='+value)
@@ -85,4 +87,4 @@ for n in nodes.values():
     if uri.startswith('rbxasset://') and not uri.startswith('rbxasset://textures/'):
         assets.setdefault(uri.rsplit('/',1)[-1],[]).append(n['id'])
 (ROOT/'docs/asset-map.json').write_text(json.dumps(assets,indent=2)+'\n')
-print('Generated',len(nodes)-1,'objects;',len(assets),'unavailable Android asset names mapped.')
+print('Generated',len(nodes)-1,'objects;',len(assets),'original texture names mapped.')

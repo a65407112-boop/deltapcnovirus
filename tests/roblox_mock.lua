@@ -1,6 +1,6 @@
 -- Engine boundary double. It does not simulate Roblox rendering or native execution.
 Mock={signals={},queue={},services={},files={},folders={},http={},focused=nil,keys={}}
-local function signal()
+local function signal(canFire)
     local s={listeners={}}
     function s:Connect(fn)
         local c={Connected=true,fn=fn}
@@ -8,6 +8,7 @@ local function signal()
         table.insert(self.listeners,c);return c
     end
     function s:Fire(...)
+        if canFire and not canFire() then return end
         local current={table.unpack(self.listeners)}
         for _,c in ipairs(current) do if c.Connected then c.fn(...) end end
     end
@@ -59,7 +60,7 @@ Enum=setmetatable({},{__index=function(t,name)
 end})
 local kinds={GuiObject={'Frame','TextLabel','TextBox','TextButton','ImageButton','ImageLabel','ScrollingFrame'},
     GuiButton={'TextButton','ImageButton'}}
-local eventNames={Activated=true,InputBegan=true,InputChanged=true,InputEnded=true,FocusLost=true,Destroying=true,Changed=true,ChildAdded=true}
+local eventNames={Activated=true,MouseButton2Click=true,InputBegan=true,InputChanged=true,InputEnded=true,FocusLost=true,Destroying=true,Changed=true,ChildAdded=true}
 local methods={}
 function methods:IsA(kind)
     if kind=='Instance' or kind==self.ClassName then return true end
@@ -92,6 +93,13 @@ function methods:CaptureFocus() Mock.focused=self end
 function methods:ReleaseFocus() Mock.focused=nil end
 function methods:SetAttribute(k,v) self._attributes[k]=v end
 function methods:GetAttribute(k) return self._attributes[k] end
+function methods:Clone()
+    local copy=Instance.new(self.ClassName)
+    for k,v in pairs(self._props) do if k~='Parent' then copy[k]=v end end
+    for k,v in pairs(self._attributes) do copy:SetAttribute(k,v) end
+    for _,child in ipairs(self:GetChildren()) do child:Clone().Parent=copy end
+    return copy
+end
 local function absoluteSize(n)
     if n.ClassName=='ScreenGui' then return Vector2.new(1280,720) end
     local p=n.Parent and n.Parent.AbsoluteSize or Vector2.new(1280,720)
@@ -108,7 +116,12 @@ local mt={__index=function(n,k)
         return Vector2.new(parentPos.X+pos.X.Scale*size.X+pos.X.Offset-anchor.X*own.X,
             parentPos.Y+pos.Y.Scale*size.Y+pos.Y.Offset-anchor.Y*own.Y)
     end
-    if eventNames[k] then n._events[k]=n._events[k] or signal();return n._events[k] end
+    if eventNames[k] then
+        if not n._events[k] then
+            n._events[k]=signal(k=='Activated' and function() return n.Active==true and n.Interactable~=false end or nil)
+        end
+        return n._events[k]
+    end
     if n._props[k]~=nil then return n._props[k] end
     return methods.FindFirstChild(n,k)
 end,__newindex=function(n,k,v)
@@ -124,7 +137,7 @@ end,__newindex=function(n,k,v)
     end
 end}
 Instance={new=function(kind,parent)
-    local n=setmetatable({_props={ClassName=kind,Name=kind,Text='',Visible=true,Size=UDim2.new(),
+    local n=setmetatable({_props={ClassName=kind,Name=kind,Text='',Visible=true,Active=kind=='TextButton' or kind=='ImageButton',Size=UDim2.new(),
         Position=UDim2.new(),AnchorPoint=Vector2.new(),ZIndex=1,BackgroundTransparency=0},
         _signals={},_events={},_children={},_attributes={}},mt)
     if parent then n.Parent=parent end
@@ -165,7 +178,14 @@ Mock.services.HttpService={
 function Mock.json(value) return Mock.services.HttpService:JSONEncode(value) end
 game={PlaceId=123,JobId='current',GetService=function(_,name) return assert(Mock.services[name],'Unknown service '..name) end,
     IsLoaded=function() return true end,
-    HttpGet=function(_,url) Mock.lastUrl=url;local result=Mock.http[url];assert(result,'HTTP unavailable: '..url);return result end}
+    HttpGet=function(_,url)
+        Mock.lastUrl=url;Mock.requests=Mock.requests or {};Mock.requests[#Mock.requests+1]=url
+        local result=Mock.http[url]
+        if result~=nil then assert(result~=false,'HTTP unavailable: '..url);return result end
+        local name=url:match('^https://raw%.githubusercontent%.com/a65407112%-boop/deltapcnovirus/main/assets/([%w%.]+)$')
+        if name then local file=assert(io.open('assets/'..name,'rb'));result=file:read('*a');file:close();return result end
+        error('HTTP unavailable: '..url)
+    end}
 workspace=Instance.new('Workspace');workspace.CurrentCamera=Instance.new('Camera');workspace.CurrentCamera.ViewportSize=Vector2.new(1280,720)
 loadstring=load
 getgenv=function() return _G end
@@ -176,6 +196,7 @@ writefile=function(path,value)
 end
 readfile=function(path) return assert(Mock.files[path],'File not found') end
 makefolder=function(path) Mock.folders[path]=true end
+getcustomasset=function(path) assert(Mock.files[path],'Missing local asset');return 'rbxasset://mock/'..path end
 getclipboard=function() return Mock.clipboard or '' end
 setclipboard=function(text) Mock.clipboard=text end
 setfpscap=function(fps) Mock.fps=fps end

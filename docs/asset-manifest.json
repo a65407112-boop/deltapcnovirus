@@ -1,0 +1,113 @@
+{
+  "version": "f3d319012d835ead",
+  "files": [
+    {
+      "name": "f1",
+      "path": "DeltaPC/assets/cd6f59693cc7-f1.json",
+      "size": 2108,
+      "checksum": 2691763925
+    },
+    {
+      "name": "i1",
+      "path": "DeltaPC/assets/c40a4c22cfb7-i1.png",
+      "size": 33868,
+      "checksum": 3046439360
+    },
+    {
+      "name": "i11",
+      "path": "DeltaPC/assets/28011a17d748-i11.png",
+      "size": 424,
+      "checksum": 2488710118
+    },
+    {
+      "name": "i12",
+      "path": "DeltaPC/assets/b9c11eb16c21-i12.png",
+      "size": 321,
+      "checksum": 1575454463
+    },
+    {
+      "name": "i14",
+      "path": "DeltaPC/assets/b3e7a3ed56a1-i14.png",
+      "size": 343,
+      "checksum": 3519781344
+    },
+    {
+      "name": "i15",
+      "path": "DeltaPC/assets/4d5614355763-i15.png",
+      "size": 235,
+      "checksum": 1378704181
+    },
+    {
+      "name": "i16",
+      "path": "DeltaPC/assets/e884b1503c3f-i16.png",
+      "size": 4055,
+      "checksum": 1624302980
+    },
+    {
+      "name": "i17",
+      "path": "DeltaPC/assets/e52207bdb7ad-i17.png",
+      "size": 297,
+      "checksum": 4179131902
+    },
+    {
+      "name": "i18",
+      "path": "DeltaPC/assets/2b89b19066f8-i18.png",
+      "size": 22555,
+      "checksum": 2162377493
+    },
+    {
+      "name": "i2",
+      "path": "DeltaPC/assets/e91b26011619-i2.png",
+      "size": 701,
+      "checksum": 1263287605
+    },
+    {
+      "name": "i3",
+      "path": "DeltaPC/assets/67d0d179ddf3-i3.png",
+      "size": 353,
+      "checksum": 4281375705
+    },
+    {
+      "name": "i4",
+      "path": "DeltaPC/assets/b26a048c1c48-i4.png",
+      "size": 481344,
+      "checksum": 2265504967
+    },
+    {
+      "name": "i5",
+      "path": "DeltaPC/assets/2a7b643b991b-i5.png",
+      "size": 33091,
+      "checksum": 2305431098
+    },
+    {
+      "name": "i6",
+      "path": "DeltaPC/assets/8ad5588574e6-i6.png",
+      "size": 61819,
+      "checksum": 847015361
+    },
+    {
+      "name": "i7",
+      "path": "DeltaPC/assets/dfd428648d0a-i7.png",
+      "size": 315,
+      "checksum": 3413543616
+    },
+    {
+      "name": "i8",
+      "path": "DeltaPC/assets/3611c868e002-i8.png",
+      "size": 1118,
+      "checksum": 1864692186
+    },
+    {
+      "name": "i9",
+      "path": "DeltaPC/assets/eb28b71f78f4-i9.png",
+      "size": 376,
+      "checksum": 1766955963
+    },
+    {
+      "name": "logo.png",
+      "path": "DeltaPC/assets/02c01f53dcce-logo.png",
+      "size": 91387,
+      "checksum": 3102393375
+    }
+  ]
+}

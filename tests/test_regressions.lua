@@ -13,8 +13,8 @@ ui=start({keyed=false})
 assert(Mock.fps==120,'Restored FPS settings must actually be applied')
 ui.open()
 local strip,menu=ui.nodes[413],ui.nodes[371]
-assert(strip.Position.X.Offset+strip.Size.X.Offset<0 or strip.Size.X.Scale<.9,'Tab strip must reserve space for theme menu')
 assert(menu.ZIndex>strip.ZIndex,'Theme menu must be above tab strip')
+menu.Activated:Fire();assert(ui.nodes[375].Visible,'Original theme dropdown must open over the strip')
 ui.close()
 setclipboard=nil;toclipboard=nil
 ui=start({keyed=true});ui.open();ui.nodes[18].Activated:Fire()
